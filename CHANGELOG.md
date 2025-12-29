@@ -19,7 +19,7 @@
 - **Repository Layer** - Database access layer with batch query methods (eliminates N+1 queries)
 - **ACL Caching** - 30-second TTL cache for permission lookups with automatic invalidation
 - **Config Options** - `jwtSecret`, `allowedOrigins`, `requireAuth` for security configuration
-- **Environment Variables** - `BASE_URL` support for Docker deployments
+- **Environment Variables** - Improved Docker environment variable naming with service prefixes (`SIGNET_PORT`, `SIGNET_HOST`, `EXTERNAL_URL`, `UI_PORT`, `UI_HOST`, `DAEMON_URL`); legacy names still supported
 
 ### Changed
 
