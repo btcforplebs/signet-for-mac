@@ -49,6 +49,7 @@
 - Docker Alpine compatibility for `better-sqlite3` native module
 - Unhandled promises and swallowed errors in authorization polling
 - Database cleanup errors now logged instead of silently ignored
+- NIP-46 subscriptions not recovering after sleep/wake cycles - subscription lifecycle now managed explicitly with automatic restart on relay reconnection
 
 ### Security
 
