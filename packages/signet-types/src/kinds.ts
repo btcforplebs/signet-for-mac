@@ -165,13 +165,14 @@ export function getTrustLevelBehavior(level: TrustLevel): TrustLevelBehavior {
         autoApprove: [
           'Notes, reposts, reactions',
           'Comments, articles',
-          'Zap receipts',
+          'Zap receipts, blossom auth',
+          'NIP-44 encryption (general)',
           'Mute/pin/bookmark lists',
         ],
         requiresApproval: [
           'Profile changes',
           'Follow list updates',
-          'DMs & encryption',
+          'NIP-04 encryption (DMs)',
           'Relay list changes',
           'Wallet operations',
         ],

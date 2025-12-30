@@ -88,16 +88,3 @@ export function getTrustLevelInfo(level: TrustLevel): TrustLevelInfo {
       };
   }
 }
-
-// Legacy emoji support for backward compatibility during migration
-export const TRUST_LEVEL_LABELS: Record<TrustLevel, string> = {
-  paranoid: 'Always Ask',
-  reasonable: 'Auto-approve Safe',
-  full: 'Auto-approve All',
-};
-
-export const TRUST_LEVEL_DESCRIPTIONS: Record<TrustLevel, string> = {
-  paranoid: 'Every action requires your approval',
-  reasonable: 'Auto-approve common actions, ask for sensitive ones',
-  full: 'Automatically approve all requests from this app',
-};

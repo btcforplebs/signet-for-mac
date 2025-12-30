@@ -133,10 +133,10 @@ export function RequestsPanel({
   }, [requests]);
 
   const uniqueApps = useMemo(() => {
-    const apps = new Map<string, string>(); // npub -> display name (npub truncated)
+    const apps = new Map<string, string>(); // npub -> display name (appName or truncated npub)
     requests.forEach(r => {
       if (!apps.has(r.npub)) {
-        apps.set(r.npub, r.npub.slice(0, 12) + '...');
+        apps.set(r.npub, r.appName || r.npub.slice(0, 12) + '...');
       }
     });
     return Array.from(apps.entries()).sort((a, b) => a[1].localeCompare(b[1]));

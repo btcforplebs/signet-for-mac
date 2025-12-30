@@ -3,6 +3,7 @@ import createDebug from 'debug';
 import prisma from '../db.js';
 import type { ConnectionManager } from './connection-manager.js';
 import { getEventService } from './services/event-service.js';
+import { requestRepository } from './repositories/request-repository.js';
 import type { PendingRequest } from '@signet/types';
 import {
     POLL_INITIAL_INTERVAL_MS,
@@ -40,6 +41,16 @@ async function persistRequest(
     payload?: string | Event
 ) {
     const params = serialiseParam(payload);
+
+    // Look up keyUserId for non-connect requests (connect creates the KeyUser on approval)
+    let keyUserId: number | undefined;
+    if (method !== 'connect' && keyName) {
+        const foundId = await requestRepository.findKeyUserId(keyName, remotePubkey);
+        if (foundId) {
+            keyUserId = foundId;
+        }
+    }
+
     const record = await prisma.request.create({
         data: {
             keyName,
@@ -47,7 +58,9 @@ async function persistRequest(
             remotePubkey,
             method,
             params,
+            keyUserId,
         },
+        include: { KeyUser: true },
     });
 
     // Emit event for real-time updates
@@ -84,6 +97,8 @@ async function persistRequest(
         ttlSeconds: Math.round(REQUEST_EXPIRY_MS / 1000),
         requiresPassword: false, // Will be determined by the UI
         processedAt: null,
+        autoApproved: false,
+        appName: record.KeyUser?.description ?? null,
     });
 
     // Schedule expiry notification - don't delete the record, keep for history

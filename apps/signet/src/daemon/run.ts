@@ -6,7 +6,7 @@ import { RelayPool } from './lib/relay-pool.js';
 import { SubscriptionManager } from './lib/subscription-manager.js';
 import { requestAuthorization } from './authorize.js';
 import type { DaemonBootstrapConfig } from './types.js';
-import { isRequestPermitted, type RpcMethod } from './lib/acl.js';
+import { checkRequestPermission, type RpcMethod } from './lib/acl.js';
 import {
     KeyService,
     RequestService,
@@ -16,14 +16,32 @@ import {
     PublishLogger,
     EventService,
     setEventService,
+    getEventService,
 } from './services/index.js';
 import { requestRepository, logRepository } from './repositories/index.js';
 import { HttpServer } from './http/server.js';
+import prisma from '../db.js';
 
 // Cleanup constants
 const CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 const REQUEST_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
 const LOG_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+// Rate limiting for auto-approval logging: 1 log per method per minute per app
+const AUTO_APPROVAL_LOG_INTERVAL_MS = 60 * 1000; // 1 minute
+const autoApprovalLogTimestamps = new Map<string, number>();
+
+function shouldLogAutoApproval(keyUserId: number, method: string): boolean {
+    const key = `${keyUserId}:${method}`;
+    const now = Date.now();
+    const lastLog = autoApprovalLogTimestamps.get(key);
+
+    if (!lastLog || now - lastLog >= AUTO_APPROVAL_LOG_INTERVAL_MS) {
+        autoApprovalLogTimestamps.set(key, now);
+        return true;
+    }
+    return false;
+}
 
 function buildAuthorizationCallback(
     keyName: string,
@@ -34,18 +52,30 @@ function buildAuthorizationCallback(
         console.log(`[${keyName}] Request ${id} from ${humanPubkey} to ${method}`);
 
         const primaryParam = Array.isArray(params) ? params[0] : undefined;
-        const existingDecision = await isRequestPermitted(
+        const result = await checkRequestPermission(
             keyName,
             pubkey,
             method as RpcMethod,
             primaryParam
         );
 
-        if (existingDecision !== undefined) {
+        if (result.permitted !== undefined) {
+            const accessType = result.autoApproved ? 'auto-approved' : 'granted';
             console.log(
-                `[${keyName}] Access ${existingDecision ? 'granted' : 'denied'} via ACL for ${humanPubkey}`
+                `[${keyName}] Access ${result.permitted ? accessType : 'denied'} via ACL for ${humanPubkey}`
             );
-            return existingDecision;
+
+            // Log auto-approved requests (with rate limiting)
+            if (result.permitted && result.autoApproved && result.keyUserId) {
+                if (shouldLogAutoApproval(result.keyUserId, method)) {
+                    // Log asynchronously to avoid blocking
+                    logAutoApproval(result.keyUserId, method, primaryParam, keyName, id, pubkey).catch(err => {
+                        console.error('Failed to log auto-approval:', err);
+                    });
+                }
+            }
+
+            return result.permitted;
         }
         console.log(`[${keyName}] No ACL decision for ${humanPubkey}, proceeding to authorization request`);
 
@@ -57,6 +87,55 @@ function buildAuthorizationCallback(
             return false;
         }
     };
+}
+
+async function logAutoApproval(
+    keyUserId: number,
+    method: string,
+    params: string | undefined,
+    keyName: string,
+    requestId: string,
+    remotePubkey: string
+): Promise<void> {
+    // Fetch KeyUser info for the activity entry
+    const keyUser = await prisma.keyUser.findUnique({
+        where: { id: keyUserId },
+        select: { userPubkey: true, description: true },
+    });
+
+    const paramsStr = typeof params === 'string' ? params : JSON.stringify(params);
+
+    // Create request record (so it appears in Activity page)
+    await requestRepository.createAutoApproved({
+        requestId,
+        keyName,
+        method,
+        remotePubkey,
+        params: paramsStr,
+        keyUserId,
+    });
+
+    // Create log entry
+    const log = await logRepository.create({
+        type: 'approval',
+        method,
+        params: paramsStr,
+        keyUserId,
+        autoApproved: true,
+    });
+
+    // Emit SSE event
+    const eventService = getEventService();
+    eventService.emitRequestAutoApproved({
+        id: log.id,
+        timestamp: log.timestamp.toISOString(),
+        type: log.type,
+        method: log.method ?? undefined,
+        keyName,
+        userPubkey: keyUser?.userPubkey,
+        appName: keyUser?.description ?? undefined,
+        autoApproved: true,
+    });
 }
 
 export async function runDaemon(config: DaemonBootstrapConfig): Promise<void> {

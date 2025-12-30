@@ -156,3 +156,4 @@ All secrets (JWT secret, admin secret) are generated using Node.js `crypto.rando
 5. **Monitor logs**: Enable verbose logging and monitor for suspicious activity
 6. **Restrict network access**: Use VPN, firewall rules, or reverse proxy authentication to limit access to the web UI
 7. **Regular updates**: Keep Signet updated to receive security patches
+8. **See [DEPLOYMENT.md](DEPLOYMENT.md)**: For specific setup guides (Tailscale, reverse proxies)

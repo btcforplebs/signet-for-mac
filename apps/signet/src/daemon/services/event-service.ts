@@ -1,5 +1,5 @@
 import createDebug from 'debug';
-import type { PendingRequest, ConnectedApp, DashboardStats, KeyInfo, RelayStatusResponse } from '@signet/types';
+import type { PendingRequest, ConnectedApp, DashboardStats, KeyInfo, RelayStatusResponse, ActivityEntry } from '@signet/types';
 
 const debug = createDebug('signet:events');
 
@@ -11,6 +11,7 @@ export type ServerEvent =
     | { type: 'request:approved'; requestId: string }
     | { type: 'request:denied'; requestId: string }
     | { type: 'request:expired'; requestId: string }
+    | { type: 'request:auto_approved'; activity: ActivityEntry }
     | { type: 'app:connected'; app: ConnectedApp }
     | { type: 'key:created'; key: KeyInfo }
     | { type: 'key:unlocked'; keyName: string }
@@ -129,6 +130,13 @@ export class EventService {
      */
     emitRelaysUpdated(relays: RelayStatusResponse): void {
         this.emit({ type: 'relays:updated', relays });
+    }
+
+    /**
+     * Emit a request:auto_approved event
+     */
+    emitRequestAutoApproved(activity: ActivityEntry): void {
+        this.emit({ type: 'request:auto_approved', activity });
     }
 }
 

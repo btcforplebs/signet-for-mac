@@ -2,17 +2,14 @@ import crypto from 'crypto';
 import { finalizeEvent, verifyEvent, getPublicKey, type Event } from 'nostr-tools/pure';
 import { npubEncode } from 'nostr-tools/nip19';
 import { encrypt as nip44Encrypt, decrypt as nip44Decrypt, getConversationKey } from 'nostr-tools/nip44';
+import { encrypt as nip04Encrypt, decrypt as nip04Decrypt } from 'nostr-tools/nip04';
 import createDebug from 'debug';
+import { bytesToHex } from './lib/hex.js';
 import prisma from '../db.js';
-import { getEventService } from './services/event-service.js';
-import { appService } from './services/app-service.js';
 import type { RelayPool } from './lib/relay-pool.js';
 import type { SubscriptionManager } from './lib/subscription-manager.js';
 
 const debug = createDebug('signet:nip46');
-
-// Default trust level for auto-approved connections via secret
-const DEFAULT_TRUST_LEVEL = 'reasonable';
 
 type Nip46Method =
     | 'connect'
@@ -222,8 +219,10 @@ export class Nip46Backend {
                 return this.handleNip44Decrypt(params);
 
             case 'nip04_encrypt':
+                return this.handleNip04Encrypt(params);
+
             case 'nip04_decrypt':
-                throw new Error('NIP-04 encryption is deprecated, use NIP-44');
+                return this.handleNip04Decrypt(params);
 
             case 'ping':
                 return 'pong';
@@ -234,110 +233,41 @@ export class Nip46Backend {
     }
 
     /**
-     * Handle connect request, with optional secret-based auto-approval.
+     * Handle connect request with secret validation.
+     * Secret validates the connection attempt but does NOT auto-approve.
+     * User must still approve and select trust level via the UI.
      */
     private async handleConnect(
         id: string,
         params: string[],
         remotePubkey: string
     ): Promise<string | undefined> {
-        const providedSecret = params[1]?.trim().toLowerCase();
-        const expectedSecret = this.adminSecret?.trim().toLowerCase();
+        const providedSecret = params[1];
+        const expectedSecret = this.adminSecret;
         const humanPubkey = npubEncode(remotePubkey);
 
-        // If no admin secret configured, fall through to normal flow
-        if (!expectedSecret) {
-            debug('[%s] no admin secret configured, using normal connect flow', this.keyName);
-            const permitted = await this.permitCallback({
-                id,
-                method: 'connect',
-                pubkey: remotePubkey,
-                params,
-            });
-            return permitted ? 'ack' : undefined;
+        // If admin secret is configured and client provided a secret, validate it
+        // Invalid secrets are silently dropped (security measure to prevent enumeration)
+        if (expectedSecret && providedSecret) {
+            const secretsMatch = providedSecret.length === expectedSecret.length &&
+                crypto.timingSafeEqual(Buffer.from(providedSecret), Buffer.from(expectedSecret));
+            if (!secretsMatch) {
+                debug('[%s] connect with invalid secret from %s', this.keyName, humanPubkey);
+                return undefined; // Silent rejection - no response sent
+            }
+            debug('[%s] connect with valid secret from %s, proceeding to approval', this.keyName, humanPubkey);
         }
 
-        // If no secret provided in request, fall through to normal flow (manual approval)
-        if (!providedSecret) {
-            console.log(`[${this.keyName}] Connect from ${humanPubkey} without secret, requiring manual approval`);
-            const permitted = await this.permitCallback({
-                id,
-                method: 'connect',
-                pubkey: remotePubkey,
-                params,
-            });
-            return permitted ? 'ack' : undefined;
-        }
-
-        // Validate the secret - silently drop invalid attempts (no response)
-        // Use timing-safe comparison to prevent timing attacks
-        const secretsMatch = providedSecret.length === expectedSecret.length &&
-            crypto.timingSafeEqual(Buffer.from(providedSecret), Buffer.from(expectedSecret));
-        if (!secretsMatch) {
-            debug('[%s] connect with invalid secret from %s', this.keyName, humanPubkey);
-            return undefined; // Silent rejection - no response sent
-        }
-
-        // Secret matches - auto-approve and create KeyUser
-        console.log(`[${this.keyName}] Connect from ${humanPubkey} with valid secret - auto-approving`);
-
-        try {
-            await this.createKeyUserForConnect(remotePubkey);
-            return 'ack';
-        } catch (e: unknown) {
-            const errorMessage = e instanceof Error ? e.message : String(e);
-            console.error(`[${this.keyName}] Failed to create KeyUser: ${errorMessage}`);
-            throw e;
-        }
-    }
-
-    /**
-     * Create or update KeyUser for an auto-approved connection.
-     */
-    private async createKeyUserForConnect(remotePubkey: string): Promise<void> {
-        const keyUser = await prisma.keyUser.upsert({
-            where: {
-                unique_key_user: {
-                    keyName: this.keyName,
-                    userPubkey: remotePubkey,
-                },
-            },
-            update: {
-                lastUsedAt: new Date(),
-            },
-            create: {
-                keyName: this.keyName,
-                userPubkey: remotePubkey,
-                trustLevel: DEFAULT_TRUST_LEVEL,
-                description: 'Auto-approved via bunker secret',
-            },
+        // All connect requests go through the normal approval flow
+        // This allows the user to see the request and select a trust level
+        console.log(`[${this.keyName}] Connect from ${humanPubkey}, requesting approval`);
+        const permitted = await this.permitCallback({
+            id,
+            method: 'connect',
+            pubkey: remotePubkey,
+            params,
         });
-
-        // Create connect signing condition if not exists
-        const existingCondition = await prisma.signingCondition.findFirst({
-            where: {
-                keyUserId: keyUser.id,
-                method: 'connect',
-            },
-        });
-
-        if (!existingCondition) {
-            await prisma.signingCondition.create({
-                data: {
-                    keyUserId: keyUser.id,
-                    method: 'connect',
-                    allowed: true,
-                },
-            });
-        }
-
-        console.log(`[${this.keyName}] KeyUser created/updated for ${npubEncode(remotePubkey)} with trust level: ${keyUser.trustLevel}`);
-
-        // Emit app:connected event for real-time updates
-        const app = await appService.getAppById(keyUser.id);
-        if (app) {
-            getEventService().emitAppConnected(app);
-        }
+        return permitted ? 'ack' : undefined;
     }
 
     /**
@@ -376,6 +306,30 @@ export class Nip46Backend {
         }
         const conversationKey = getConversationKey(this.nsec, thirdPartyPubkey);
         return nip44Decrypt(ciphertext, conversationKey);
+    }
+
+    /**
+     * NIP-04 encrypt for third party.
+     */
+    private async handleNip04Encrypt(params: string[]): Promise<string> {
+        const [thirdPartyPubkey, plaintext] = params;
+        if (!thirdPartyPubkey || !plaintext) {
+            throw new Error('Missing parameters for nip04_encrypt');
+        }
+        const privkeyHex = bytesToHex(this.nsec);
+        return nip04Encrypt(privkeyHex, thirdPartyPubkey, plaintext);
+    }
+
+    /**
+     * NIP-04 decrypt from third party.
+     */
+    private async handleNip04Decrypt(params: string[]): Promise<string> {
+        const [thirdPartyPubkey, ciphertext] = params;
+        if (!thirdPartyPubkey || !ciphertext) {
+            throw new Error('Missing parameters for nip04_decrypt');
+        }
+        const privkeyHex = bytesToHex(this.nsec);
+        return nip04Decrypt(privkeyHex, thirdPartyPubkey, ciphertext);
     }
 
     /**

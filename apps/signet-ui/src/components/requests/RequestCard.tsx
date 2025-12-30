@@ -81,13 +81,6 @@ export function RequestCard({
           </span>
         </div>
         <div className={styles.headerRight}>
-          <button
-            className={styles.detailsButton}
-            onClick={onViewDetails}
-            aria-label="View request details"
-          >
-            Details
-          </button>
           <div className={styles.status}>
             {request.state === 'pending' && (
               <span className={styles.ttl}>{formatTtl(request.ttl)}</span>
@@ -96,9 +89,18 @@ export function RequestCard({
               <span className={styles.expired}>Expired</span>
             )}
             {request.state === 'approved' && (
-              <span className={styles.approved}>Approved</span>
+              <span className={request.autoApproved ? styles.autoApproved : styles.approved}>
+                {request.autoApproved ? 'Auto Approved' : 'Approved'}
+              </span>
             )}
           </div>
+          <button
+            className={styles.detailsButton}
+            onClick={onViewDetails}
+            aria-label="View request details"
+          >
+            Details
+          </button>
         </div>
       </div>
 
@@ -108,8 +110,8 @@ export function RequestCard({
             <span className={styles.keyName}>{request.keyName}</span>
           )}
           <span className={styles.separator}>•</span>
-          <span className={styles.npub} title={request.remotePubkey}>
-            {request.npub.slice(0, 12)}...{request.npub.slice(-6)}
+          <span className={styles.npub} title={request.npub}>
+            {request.appName || `${request.npub.slice(0, 12)}...${request.npub.slice(-6)}`}
           </span>
           <span className={styles.separator}>•</span>
           <span className={styles.time}>{request.createdLabel}</span>

@@ -269,6 +269,7 @@ export function useRequests(): UseRequestsResult {
       request.method.toLowerCase().includes(query) ||
       request.npub.toLowerCase().includes(query) ||
       (request.keyName?.toLowerCase().includes(query) ?? false) ||
+      (request.appName?.toLowerCase().includes(query) ?? false) ||
       (request.eventPreview?.kind.toString().includes(query) ?? false)
     );
   });

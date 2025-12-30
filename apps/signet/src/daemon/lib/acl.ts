@@ -2,7 +2,14 @@ import type { Event } from 'nostr-tools/pure';
 import prisma from '../../db.js';
 import { ACL_CACHE_TTL_MS, ACL_CACHE_MAX_SIZE } from '../constants.js';
 
-export type RpcMethod = 'connect' | 'sign_event' | 'encrypt' | 'decrypt' | 'ping';
+export type RpcMethod =
+    | 'connect'
+    | 'sign_event'
+    | 'get_public_key'
+    | 'encrypt' | 'decrypt'  // Legacy generic names
+    | 'nip04_encrypt' | 'nip04_decrypt'
+    | 'nip44_encrypt' | 'nip44_decrypt'
+    | 'ping';
 
 /**
  * Simple LRU-like cache for ACL decisions with TTL.
@@ -87,6 +94,18 @@ export type TrustLevel = 'paranoid' | 'reasonable' | 'full';
 export type AllowScope = {
     kind?: number | 'all';
 };
+
+/**
+ * Result of an ACL permission check.
+ * - permitted: true (allowed), false (denied), undefined (needs manual approval)
+ * - autoApproved: true if permitted via trust level (not explicit condition)
+ * - keyUserId: the KeyUser id (for logging)
+ */
+export interface PermissionResult {
+    permitted: boolean | undefined;
+    autoApproved: boolean;
+    keyUserId?: number;
+}
 
 /**
  * Event kinds considered "safe" for auto-approval in "reasonable" trust level.
@@ -235,14 +254,25 @@ function shouldAutoApproveByTrustLevel(
     // Reasonable: approve based on method and kind
     switch (method) {
         case 'connect':
-            // Connect was already approved when trust level was set
+            // Reconnects from known apps are auto-approved at reasonable/full trust
+            // (paranoid users already returned false above)
             return true;
         case 'ping':
-            // Ping is always safe
+        case 'get_public_key':
+            // These are always safe - no signing involved
+            return true;
+        case 'nip44_encrypt':
+        case 'nip44_decrypt':
+            // NIP-44 is general-purpose encryption used for many things
+            // (blossom file auth, general data encryption, etc.)
+            // Safe to auto-approve at reasonable trust level
             return true;
         case 'encrypt':
         case 'decrypt':
-            // NIP-04 encryption/decryption is sensitive (DMs)
+        case 'nip04_encrypt':
+        case 'nip04_decrypt':
+            // NIP-04 is specifically for encrypted DMs (privacy sensitive)
+            // Legacy generic names also treated as NIP-04 for safety
             return false;
         case 'sign_event':
             const kind = extractKind(payload);
@@ -256,12 +286,16 @@ function shouldAutoApproveByTrustLevel(
     }
 }
 
-export async function isRequestPermitted(
+/**
+ * Check if a request is permitted with full result details.
+ * Returns permission decision, whether it was auto-approved, and the keyUserId.
+ */
+export async function checkRequestPermission(
     keyName: string,
     remotePubkey: string,
     method: RpcMethod,
     payload?: string | Event
-): Promise<boolean | undefined> {
+): Promise<PermissionResult> {
     // Try to get cached keyUser info
     let cached = getCachedEntry(keyName, remotePubkey);
     let keyUserId: number;
@@ -270,10 +304,10 @@ export async function isRequestPermitted(
     if (cached) {
         // Use cached data for quick checks
         if (cached.keyUser.revokedAt) {
-            return false;
+            return { permitted: false, autoApproved: false, keyUserId: cached.keyUser.id };
         }
         if (cached.hasExplicitDeny) {
-            return false;
+            return { permitted: false, autoApproved: false, keyUserId: cached.keyUser.id };
         }
         keyUserId = cached.keyUser.id;
         trustLevel = (cached.keyUser.trustLevel as TrustLevel) ?? 'reasonable';
@@ -285,12 +319,12 @@ export async function isRequestPermitted(
         });
 
         if (!keyUser) {
-            return undefined;
+            return { permitted: undefined, autoApproved: false };
         }
 
         // Check if user is revoked
         if (keyUser.revokedAt) {
-            return false;
+            return { permitted: false, autoApproved: false, keyUserId: keyUser.id };
         }
 
         // Check for explicit deny
@@ -309,7 +343,7 @@ export async function isRequestPermitted(
         });
 
         if (explicitDeny) {
-            return false;
+            return { permitted: false, autoApproved: false, keyUserId: keyUser.id };
         }
 
         keyUserId = keyUser.id;
@@ -327,7 +361,8 @@ export async function isRequestPermitted(
 
     if (condition) {
         if (condition.allowed === true || condition.allowed === false) {
-            return condition.allowed;
+            // Explicit condition - not auto-approved
+            return { permitted: condition.allowed, autoApproved: false, keyUserId };
         }
     }
 
@@ -340,11 +375,24 @@ export async function isRequestPermitted(
         }).catch(() => {
             // Ignore errors on lastUsedAt update
         });
-        return true;
+        return { permitted: true, autoApproved: true, keyUserId };
     }
 
     // No decision - will trigger approval request
-    return undefined;
+    return { permitted: undefined, autoApproved: false, keyUserId };
+}
+
+/**
+ * Check if a request is permitted (simple boolean result for backward compatibility).
+ */
+export async function isRequestPermitted(
+    keyName: string,
+    remotePubkey: string,
+    method: RpcMethod,
+    payload?: string | Event
+): Promise<boolean | undefined> {
+    const result = await checkRequestPermission(keyName, remotePubkey, method, payload);
+    return result.permitted;
 }
 
 export function scopeToCondition(method: RpcMethod | string, scope?: AllowScope): SigningConditionQuery {
@@ -433,13 +481,15 @@ export async function grantPermissionsByTrustLevel(
         },
     });
 
-    // For 'full' trust, also grant explicit permissions for encrypt/decrypt
-    // (sign_event and ping will be auto-approved by trust level check)
+    // For 'full' trust, also grant explicit permissions for sensitive operations
+    // (sign_event and ping will be auto-approved by trust level check anyway)
     if (trustLevel === 'full') {
         await prisma.signingCondition.createMany({
             data: [
-                { keyUserId: keyUser.id, allowed: true, method: 'encrypt' },
-                { keyUserId: keyUser.id, allowed: true, method: 'decrypt' },
+                { keyUserId: keyUser.id, allowed: true, method: 'nip04_encrypt' },
+                { keyUserId: keyUser.id, allowed: true, method: 'nip04_decrypt' },
+                { keyUserId: keyUser.id, allowed: true, method: 'nip44_encrypt' },
+                { keyUserId: keyUser.id, allowed: true, method: 'nip44_decrypt' },
                 { keyUserId: keyUser.id, allowed: true, method: 'sign_event', kind: 'all' },
             ],
         });
@@ -464,16 +514,19 @@ export async function updateTrustLevel(
         select: { keyName: true, userPubkey: true },
     });
 
-    // If upgrading to full trust, add encrypt/decrypt permissions
+    // If upgrading to full trust, add encrypt/decrypt permissions for NIP-04
+    // (NIP-44 is already auto-approved at reasonable trust)
     if (trustLevel === 'full') {
         const existingEncrypt = await prisma.signingCondition.findFirst({
-            where: { keyUserId, method: 'encrypt', allowed: true },
+            where: { keyUserId, method: 'nip04_encrypt', allowed: true },
         });
         if (!existingEncrypt) {
             await prisma.signingCondition.createMany({
                 data: [
-                    { keyUserId, allowed: true, method: 'encrypt' },
-                    { keyUserId, allowed: true, method: 'decrypt' },
+                    { keyUserId, allowed: true, method: 'nip04_encrypt' },
+                    { keyUserId, allowed: true, method: 'nip04_decrypt' },
+                    { keyUserId, allowed: true, method: 'nip44_encrypt' },
+                    { keyUserId, allowed: true, method: 'nip44_decrypt' },
                 ],
             });
         }

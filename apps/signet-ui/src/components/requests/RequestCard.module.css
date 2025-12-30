@@ -121,6 +121,10 @@
   color: var(--success);
 }
 
+.autoApproved {
+  color: var(--accent);
+}
+
 /* Details section */
 .details {
   display: flex;
