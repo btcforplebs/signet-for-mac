@@ -10,6 +10,7 @@
     "packages/*"
   ],
   "scripts": {
+    "prepare": "pnpm --filter @signet/types run build",
     "build": "npm run build --workspace signet",
     "build:daemon": "npm run build --workspace signet",
     "build:new-ui": "npm run build --workspace signet-ui",
@@ -17,5 +18,5 @@
     "start:new-ui": "npm run dev --workspace signet-ui -- --host 0.0.0.0 --port 4174",
     "sync-version": "node scripts/sync-version.mjs"
   },
-  "version": "1.1.0"
+  "version": "1.1.1"
 }

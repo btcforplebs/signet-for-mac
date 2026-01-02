@@ -24,6 +24,8 @@ docker compose up --build signet
 - Daemon + REST API will run on `http://localhost:3000`
 - Web dashboard will run on `http://localhost:4174`. The web dashboard is not required if you plan to manage Signet using the Android app.
 
+The daemon displays your local network IP address on startup. If a single IP is detected, it also shows a QR code you can scan with the Android app for quick setup.
+
 If you prefer to add keys directly through the CLI:
 
 ```bash

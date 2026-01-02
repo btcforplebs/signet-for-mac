@@ -8,20 +8,26 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -44,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import tech.geektoshi.signet.R
 import tech.geektoshi.signet.data.api.SignetApiClient
 import tech.geektoshi.signet.data.repository.SettingsRepository
+import tech.geektoshi.signet.ui.components.QRScannerSheet
 import tech.geektoshi.signet.ui.theme.BgSecondary
 import tech.geektoshi.signet.ui.theme.BgTertiary
 import tech.geektoshi.signet.ui.theme.BorderDefault
@@ -63,6 +70,18 @@ fun SetupScreen(
     var daemonUrl by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var isConnecting by remember { mutableStateOf(false) }
+    var showQRScanner by remember { mutableStateOf(false) }
+
+    // QR Scanner Sheet
+    if (showQRScanner) {
+        QRScannerSheet(
+            onScanned = { url ->
+                daemonUrl = url
+                error = null
+            },
+            onDismiss = { showQRScanner = false }
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -133,7 +152,7 @@ fun SetupScreen(
                         error = null
                     },
                     label = { Text("Server URL") },
-                    placeholder = { Text("http://192.168.1.x:3000") },
+                    placeholder = { Text("http://your-server") },
                     singleLine = true,
                     enabled = !isConnecting,
                     isError = error != null,
@@ -156,52 +175,74 @@ fun SetupScreen(
                     )
                 )
 
-                Button(
-                    onClick = {
-                        val url = daemonUrl.trim()
-                        if (url.isEmpty()) {
-                            error = "Please enter a URL"
-                            return@Button
-                        }
-                        if (!url.startsWith("http://") && !url.startsWith("https://")) {
-                            error = "URL must start with http:// or https://"
-                            return@Button
-                        }
-                        scope.launch {
-                            isConnecting = true
-                            error = null
-                            try {
-                                val client = SignetApiClient(url)
-                                val reachable = client.healthCheck()
-                                client.close()
-                                if (reachable) {
-                                    settingsRepository.setDaemonUrl(url)
-                                    onSetupComplete()
-                                } else {
-                                    error = "Could not reach server. Check the URL and make sure Signet is running."
-                                }
-                            } catch (e: Exception) {
-                                error = "Connection failed: ${e.message ?: "Unknown error"}"
-                            } finally {
-                                isConnecting = false
-                            }
-                        }
-                    },
-                    enabled = !isConnecting,
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = SignetPurple,
-                        contentColor = TextPrimary
-                    )
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    if (isConnecting) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            color = TextPrimary,
-                            strokeWidth = 2.dp
+                    OutlinedButton(
+                        onClick = { showQRScanner = true },
+                        enabled = !isConnecting,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = SignetPurple
                         )
-                    } else {
-                        Text("Connect")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.QrCodeScanner,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Scan QR")
+                    }
+
+                    Button(
+                        onClick = {
+                            val url = daemonUrl.trim()
+                            if (url.isEmpty()) {
+                                error = "Please enter a URL"
+                                return@Button
+                            }
+                            if (!url.startsWith("http://") && !url.startsWith("https://")) {
+                                error = "URL must start with http:// or https://"
+                                return@Button
+                            }
+                            scope.launch {
+                                isConnecting = true
+                                error = null
+                                try {
+                                    val client = SignetApiClient(url)
+                                    val reachable = client.healthCheck()
+                                    client.close()
+                                    if (reachable) {
+                                        settingsRepository.setDaemonUrl(url)
+                                        onSetupComplete()
+                                    } else {
+                                        error = "Could not reach server. Check the URL and make sure Signet is running."
+                                    }
+                                } catch (e: Exception) {
+                                    error = "Connection failed: ${e.message ?: "Unknown error"}"
+                                } finally {
+                                    isConnecting = false
+                                }
+                            }
+                        },
+                        enabled = !isConnecting,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = SignetPurple,
+                            contentColor = TextPrimary
+                        )
+                    ) {
+                        if (isConnecting) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                color = TextPrimary,
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Text("Connect")
+                        }
                     }
                 }
             }

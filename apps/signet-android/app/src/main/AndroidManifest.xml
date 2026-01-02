@@ -6,6 +6,10 @@
     <!-- Network access -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Camera for QR code scanning -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
     <!-- Foreground service for SSE connection -->
     <uses-permission
         android:name="android.permission.FOREGROUND_SERVICE"

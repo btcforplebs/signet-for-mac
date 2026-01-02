@@ -4,6 +4,7 @@ import { ConnectionManager } from './connection-manager.js';
 import { Nip46Backend, type PermitCallbackParams } from './nip46-backend.js';
 import { RelayPool } from './lib/relay-pool.js';
 import { SubscriptionManager } from './lib/subscription-manager.js';
+import { printServerInfo } from './lib/network.js';
 import { requestAuthorization } from './authorize.js';
 import type { DaemonBootstrapConfig } from './types.js';
 import { checkRequestPermission, type RpcMethod } from './lib/acl.js';
@@ -385,7 +386,7 @@ class Daemon {
         });
 
         await this.httpServer.start();
-        console.log(`HTTP server listening on port ${authPort}`);
+        await printServerInfo(authPort);
     }
 
     private loadKeyMaterial(keyName: string, nsec: string): void {

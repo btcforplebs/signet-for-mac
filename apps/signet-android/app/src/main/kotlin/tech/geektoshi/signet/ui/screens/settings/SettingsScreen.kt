@@ -13,15 +13,18 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -43,6 +46,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import tech.geektoshi.signet.BuildConfig
 import tech.geektoshi.signet.data.repository.SettingsRepository
+import tech.geektoshi.signet.ui.components.QRScannerSheet
 import tech.geektoshi.signet.ui.theme.BgSecondary
 import tech.geektoshi.signet.ui.theme.BgTertiary
 import tech.geektoshi.signet.ui.theme.BorderDefault
@@ -68,6 +72,17 @@ fun SettingsScreen(
 
     var daemonUrl by remember { mutableStateOf("") }
     var selectedTrustLevel by remember { mutableStateOf("reasonable") }
+    var showQRScanner by remember { mutableStateOf(false) }
+
+    // QR Scanner Sheet
+    if (showQRScanner) {
+        QRScannerSheet(
+            onScanned = { url ->
+                daemonUrl = url
+            },
+            onDismiss = { showQRScanner = false }
+        )
+    }
 
     // Check if device supports biometric or device credential authentication
     val biometricManager = remember { BiometricManager.from(context) }
@@ -138,27 +153,44 @@ fun SettingsScreen(
                     }
                 }
 
-                OutlinedTextField(
-                    value = daemonUrl,
-                    onValueChange = { daemonUrl = it },
-                    label = { Text("Daemon URL") },
-                    placeholder = { Text("http://10.0.2.2:3000") },
-                    singleLine = true,
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = SignetPurple,
-                        unfocusedBorderColor = BorderDefault,
-                        focusedLabelColor = SignetPurple,
-                        unfocusedLabelColor = TextMuted,
-                        cursorColor = SignetPurple,
-                        focusedTextColor = TextPrimary,
-                        unfocusedTextColor = TextPrimary,
-                        focusedPlaceholderColor = TextMuted,
-                        unfocusedPlaceholderColor = TextMuted,
-                        focusedContainerColor = BgTertiary,
-                        unfocusedContainerColor = BgTertiary
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = daemonUrl,
+                        onValueChange = { daemonUrl = it },
+                        label = { Text("Daemon URL") },
+                        placeholder = { Text("http://your-server") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = SignetPurple,
+                            unfocusedBorderColor = BorderDefault,
+                            focusedLabelColor = SignetPurple,
+                            unfocusedLabelColor = TextMuted,
+                            cursorColor = SignetPurple,
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary,
+                            focusedPlaceholderColor = TextMuted,
+                            unfocusedPlaceholderColor = TextMuted,
+                            focusedContainerColor = BgTertiary,
+                            unfocusedContainerColor = BgTertiary
+                        )
                     )
-                )
+
+                    IconButton(
+                        onClick = { showQRScanner = true }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.QrCodeScanner,
+                            contentDescription = "Scan QR code",
+                            tint = SignetPurple,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
             }
         }
 

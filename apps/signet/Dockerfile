@@ -10,9 +10,9 @@ COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 
 # Copy package.json files for all workspaces
 COPY apps/signet/package.json ./apps/signet/
-COPY packages/signet-types/package.json ./packages/signet-types/
+COPY packages/signet-types ./packages/signet-types
 
-# Install dependencies
+# Install dependencies (prepare script builds signet-types)
 ENV CI=true
 RUN pnpm install --frozen-lockfile
 
@@ -21,13 +21,9 @@ RUN cd /app/node_modules/.pnpm/better-sqlite3@12.5.0/node_modules/better-sqlite3
     npx --yes prebuild-install -d
 
 # Copy source files
-COPY packages/signet-types ./packages/signet-types
 COPY apps/signet ./apps/signet
 
-# Build shared types first, then daemon
-WORKDIR /app/packages/signet-types
-RUN pnpm build
-
+# Build daemon
 WORKDIR /app/apps/signet
 ENV DATABASE_URL="file:/app/config/signet.db"
 RUN pnpm prisma generate

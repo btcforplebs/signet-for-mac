@@ -6,7 +6,7 @@ Native Android app for managing Signet on mobile. Communicates with the daemon o
 
 - Android Studio Hedgehog (2023.1.1) or later
 - Android SDK 34+
-- JDK 17+
+- JDK 17+ (JDK 21+ preferred)
 - Kotlin 2.0+
 
 ## Building
@@ -50,12 +50,15 @@ The signed APK will be at `app/build/outputs/apk/release/signet-<version>-releas
 ## Setup
 
 1. Ensure your Signet daemon is running and accessible from your device
-2. Launch the app and go to **Settings**
-3. Enter your daemon URL (e.g., `http://100.x.x.x:3000` for Tailscale)
-4. The app will connect and display your keys and pending requests
+2. Launch the app - on first launch you'll see the Setup screen
+3. Enter your daemon URL (for example, `http://100.x.x.x:3000` for Tailscale) or tap **Scan QR** to use the camera
+4. The app will test the connection and then display your keys and pending requests
+
+**Tip:** The daemon displays its local network IP and a QR code on startup. Point your phone's camera at the QR code for instant setup.
 
 ## Features
 
+- **QR code scanner**: Scan the QR code from daemon startup to quickly configure the server URL
 - **Real-time notifications**: Get notified immediately when apps request approval
 - **Background service**: Maintains connection to daemon even when app is closed
 - **Auto-start on boot**: Service starts automatically when your device boots

@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.1.1]
+
+### Added
+- Daemon now shows local network IP addresses on startup for easier mobile setup
+- QR code displayed on startup when a single network address is detected (for quick Android app configuration)
+- Container detection: when running in Docker, shows helpful message instead of container-internal IP
+- Android app: QR code scanner for quick server URL configuration (scan the QR code from daemon startup)
+
+### Fixed
+- Fixed "Failed to resolve entry for package @signet/types" error when running `pnpm run dev` after fresh clone (types package now builds automatically on install)
+- Android app: Fixed confusing placeholder text in server URL field (was emulator-specific `10.0.2.2`)
+
+---
+
 ## [1.1.0]
 
 ### Added
