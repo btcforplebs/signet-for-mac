@@ -6,6 +6,8 @@ import { sanitizeCallbackUrl } from '../lib/auth.js';
 import { getEventService } from '../services/event-service.js';
 import { appService, emitCurrentStats } from '../services/index.js';
 import { VALID_TRUST_LEVELS } from '../constants.js';
+import { extractEventKind } from '../repositories/log-repository.js';
+import type { ActivityEntry } from '@signet/types';
 
 const debug = createDebug('signet:web');
 
@@ -72,17 +74,15 @@ export async function processRequestWebHandler(
         // Get app name for connect requests (optional)
         const appName = typeof request.body?.appName === 'string' ? request.body.appName.trim() : undefined;
 
+        const processedAt = new Date();
         await prisma.request.update({
             where: { id: record.id },
             data: {
                 allowed: true,
-                processedAt: new Date(),
+                processedAt,
                 approvalType: 'manual',
             },
         });
-
-        // Emit approval event for real-time updates
-        getEventService().emitRequestApproved(record.id);
 
         // For connect requests, use the new trust level system (only if keyName is present)
         if (record.keyName) {
@@ -109,6 +109,8 @@ export async function processRequestWebHandler(
         }
 
         // Log the approved request
+        let logId = 0;
+        let loggedAppName: string | undefined;
         if (record.keyName && record.remotePubkey) {
             const keyUser = await prisma.keyUser.findUnique({
                 where: {
@@ -120,7 +122,8 @@ export async function processRequestWebHandler(
             });
 
             if (keyUser) {
-                await prisma.log.create({
+                loggedAppName = keyUser.description ?? undefined;
+                const log = await prisma.log.create({
                     data: {
                         timestamp: new Date(),
                         type: 'approval',
@@ -130,8 +133,26 @@ export async function processRequestWebHandler(
                         approvalType: 'manual',
                     },
                 });
+                logId = log.id;
             }
         }
+
+        // Build activity entry for SSE
+        const activity: ActivityEntry = {
+            id: logId,
+            timestamp: processedAt.toISOString(),
+            type: 'approval',
+            method: record.method ?? undefined,
+            eventKind: record.method === 'sign_event' ? extractEventKind(record.params) : undefined,
+            keyName: record.keyName ?? undefined,
+            userPubkey: record.remotePubkey ?? undefined,
+            appName: appName || loggedAppName,
+            autoApproved: false,
+            approvalType: 'manual',
+        };
+
+        // Emit approval event for real-time updates
+        getEventService().emitRequestApproved(record.id, activity);
 
         // Emit stats update (pending count and possibly app count changed)
         await emitCurrentStats();

@@ -21,10 +21,25 @@ import {
     setDashboardService,
     emitCurrentStats,
     getConnectionTokenService,
+    AdminCommandService,
 } from './services/index.js';
 import { requestRepository, logRepository } from './repositories/index.js';
-import { HttpServer } from './http/server.js';
+import { adminLogRepository } from './repositories/admin-log-repository.js';
+import { HttpServer, type HealthStatus } from './http/server.js';
 import prisma from '../db.js';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
+// Read version from package.json using CJS-compatible approach
+let daemonVersion = '1.0.0';
+try {
+    // In CJS output, __dirname is available
+    const packageJsonPath = join(__dirname, '../../package.json');
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
+    daemonVersion = packageJson.version || '1.0.0';
+} catch {
+    // Fall back to default version if reading fails
+}
 
 // ============================================================================
 // Global Error Handlers
@@ -58,7 +73,7 @@ const REQUEST_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
 const LOG_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 // Health monitoring constants
-const HEALTH_LOG_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+const HEALTH_LOG_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 
 // Rate limiting for auto-approval logging: 1 log per method per 5 seconds per app
 const AUTO_APPROVAL_LOG_INTERVAL_MS = 5 * 1000; // 5 seconds
@@ -212,8 +227,10 @@ class Daemon {
     private readonly relayService: RelayService;
     private readonly publishLogger: PublishLogger;
     private readonly eventService: EventService;
+    private readonly adminCommandService?: AdminCommandService;
     private readonly backends: Map<string, Nip46Backend> = new Map();
     private httpServer?: HttpServer;
+    private lastPoolReset: Date | null = null;
 
     constructor(config: DaemonBootstrapConfig) {
         this.config = config;
@@ -265,6 +282,17 @@ class Daemon {
             relays: config.nostr.relays,
             secret: config.admin.secret,
         }, config.configFile, this.pool);
+
+        // Initialize admin command service (kill switch) if configured
+        if (config.killSwitch) {
+            this.adminCommandService = new AdminCommandService({
+                config: config.killSwitch,
+                keyService: this.keyService,
+                appService: this.appService,
+                getActiveKeySecrets: () => this.keyService.getActiveKeys(),
+                daemonVersion,
+            });
+        }
     }
 
     public async start(): Promise<void> {
@@ -275,6 +303,21 @@ class Daemon {
         console.log(`Configured with ${relayCount} relays: ${this.pool.getRelays().join(', ')}`);
 
         this.subscriptionManager.start();
+        this.pool.startMonitoring(); // Start sleep/wake detection
+
+        // Handle pool events (sleep/wake, reset)
+        this.pool.on((event) => {
+            if (event.type === 'sleep-detected') {
+                console.log('[KillSwitch] System wake detected, refreshing connections');
+                this.adminCommandService?.refresh();
+            }
+            if (event.type === 'pool-reset') {
+                this.lastPoolReset = new Date();
+                // Log health status after pool reset for visibility
+                setTimeout(() => this.logHealthStatus(), 2000);
+            }
+        });
+
         this.relayService.start();
         this.publishLogger.start();
         await this.startWebAuth();
@@ -282,16 +325,39 @@ class Daemon {
         // Wire up callback to start bunker backend when keys are unlocked/created via HTTP
         this.keyService.setOnKeyActivated(async (keyName: string, secret: string) => {
             await this.startKey(keyName, secret);
+            // Refresh kill switch subscriptions so it listens on newly activated keys
+            this.adminCommandService?.refresh();
+            // Log health status after key change
+            this.logHealthStatus();
         });
 
         // Wire up callback to stop bunker backend when keys are locked via HTTP
         this.keyService.setOnKeyLocked((keyName: string) => {
             this.stopKey(keyName);
+            // Refresh kill switch subscriptions since this key is no longer available
+            this.adminCommandService?.refresh();
+            // Log health status after key change
+            this.logHealthStatus();
         });
 
         await this.startConfiguredKeys();
         await this.loadPlainKeys();
+
+        // Start admin command service (kill switch) after keys are loaded
+        if (this.adminCommandService) {
+            this.adminCommandService.start();
+        }
+
         this.startCleanupTasks();
+
+        // Log daemon_started event
+        const adminLog = await adminLogRepository.create({
+            eventType: 'daemon_started',
+            clientName: 'signet-daemon',
+            clientVersion: daemonVersion,
+        });
+        this.eventService.emitAdminEvent(adminLogRepository.toActivityEntry(adminLog));
+
         console.log('Signet ready to serve requests.');
     }
 
@@ -316,20 +382,50 @@ class Daemon {
     }
 
     private logHealthStatus(): void {
-        const mem = process.memoryUsage();
-        const uptime = process.uptime();
-        const uptimeHours = Math.floor(uptime / 3600);
-        const uptimeMinutes = Math.floor((uptime % 3600) / 60);
+        const status = this.getHealthStatus();
+        const uptimeHours = Math.floor(status.uptime / 3600);
+        const uptimeMinutes = Math.floor((status.uptime % 3600) / 60);
 
         console.log('=== HEALTH STATUS ===');
         console.log(`Time: ${new Date().toISOString()}`);
         console.log(`Uptime: ${uptimeHours}h ${uptimeMinutes}m`);
-        console.log(`Memory: ${Math.round(mem.heapUsed / 1024 / 1024)}MB heap, ${Math.round(mem.rss / 1024 / 1024)}MB RSS`);
-        console.log(`SSE clients: ${this.eventService.getSubscriberCount()}`);
-        console.log(`Relay connections: ${this.pool.getConnectedCount()}/${this.pool.getRelays().length}`);
-        console.log(`Active keys: ${this.backends.size}`);
-        console.log(`Managed subscriptions: ${this.subscriptionManager.getSubscriptionCount()}`);
+        console.log(`Memory: ${status.memory.heapMB}MB heap, ${status.memory.rssMB}MB RSS`);
+        console.log(`SSE clients: ${status.sseClients}`);
+        console.log(`Relay connections: ${status.relays.connected}/${status.relays.total}`);
+        console.log(`Active keys: ${status.keys.active}`);
+        console.log(`Managed subscriptions: ${status.subscriptions}`);
+        if (status.lastPoolReset) {
+            console.log(`Last pool reset: ${status.lastPoolReset}`);
+        }
         console.log('====================');
+    }
+
+    private getHealthStatus(): HealthStatus {
+        const mem = process.memoryUsage();
+        const keyStats = this.keyService.getKeyStats();
+        const relayConnected = this.pool.getConnectedCount();
+        const relayTotal = this.pool.getRelays().length;
+
+        return {
+            status: relayConnected > 0 ? 'ok' : 'degraded',
+            uptime: Math.round(process.uptime()),
+            memory: {
+                heapMB: Math.round(mem.heapUsed / 1024 / 1024),
+                rssMB: Math.round(mem.rss / 1024 / 1024),
+            },
+            relays: {
+                connected: relayConnected,
+                total: relayTotal,
+            },
+            keys: {
+                active: keyStats.active,
+                locked: keyStats.locked,
+                offline: keyStats.offline,
+            },
+            subscriptions: this.subscriptionManager.getSubscriptionCount(),
+            sseClients: this.eventService.getSubscriberCount(),
+            lastPoolReset: this.lastPoolReset?.toISOString() ?? null,
+        };
     }
 
     private async runCleanup(): Promise<void> {
@@ -357,6 +453,17 @@ class Daemon {
             }
         } catch (error) {
             console.error('Failed to cleanup old logs:', error);
+        }
+
+        // Cleanup old admin logs (older than 30 days)
+        try {
+            const adminLogMaxAge = new Date(Date.now() - LOG_MAX_AGE_MS);
+            const deletedAdminLogs = await adminLogRepository.cleanupExpired(adminLogMaxAge);
+            if (deletedAdminLogs > 0) {
+                console.log(`Cleaned up ${deletedAdminLogs} admin log(s) older than 30 days`);
+            }
+        } catch (error) {
+            console.error('Failed to cleanup old admin logs:', error);
         }
 
         // Cleanup expired connection tokens
@@ -469,6 +576,7 @@ class Daemon {
             dashboardService: this.dashboardService,
             eventService: this.eventService,
             relayService: this.relayService,
+            getHealthStatus: () => this.getHealthStatus(),
         });
 
         await this.httpServer.start();

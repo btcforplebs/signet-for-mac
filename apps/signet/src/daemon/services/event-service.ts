@@ -1,5 +1,6 @@
 import createDebug from 'debug';
 import type { PendingRequest, ConnectedApp, DashboardStats, KeyInfo, RelayStatusResponse, ActivityEntry } from '@signet/types';
+import type { AdminActivityEntry } from '../repositories/admin-log-repository.js';
 import { getDashboardService } from './dashboard-service.js';
 
 const debug = createDebug('signet:events');
@@ -9,13 +10,14 @@ const debug = createDebug('signet:events');
  */
 export type ServerEvent =
     | { type: 'request:created'; request: PendingRequest }
-    | { type: 'request:approved'; requestId: string }
-    | { type: 'request:denied'; requestId: string }
+    | { type: 'request:approved'; requestId: string; activity: ActivityEntry }
+    | { type: 'request:denied'; requestId: string; activity: ActivityEntry }
     | { type: 'request:expired'; requestId: string }
     | { type: 'request:auto_approved'; activity: ActivityEntry }
     | { type: 'app:connected'; app: ConnectedApp }
     | { type: 'app:revoked'; appId: number }
     | { type: 'app:updated'; app: ConnectedApp }
+    | { type: 'apps:updated' }
     | { type: 'key:created'; key: KeyInfo }
     | { type: 'key:unlocked'; keyName: string }
     | { type: 'key:deleted'; keyName: string }
@@ -23,6 +25,7 @@ export type ServerEvent =
     | { type: 'key:updated'; keyName: string }
     | { type: 'stats:updated'; stats: DashboardStats }
     | { type: 'relays:updated'; relays: RelayStatusResponse }
+    | { type: 'admin:event'; activity: AdminActivityEntry }
     | { type: 'ping' };
 
 export type EventCallback = (event: ServerEvent) => void;
@@ -77,15 +80,15 @@ export class EventService {
     /**
      * Emit a request:approved event
      */
-    emitRequestApproved(requestId: string): void {
-        this.emit({ type: 'request:approved', requestId });
+    emitRequestApproved(requestId: string, activity: ActivityEntry): void {
+        this.emit({ type: 'request:approved', requestId, activity });
     }
 
     /**
      * Emit a request:denied event
      */
-    emitRequestDenied(requestId: string): void {
-        this.emit({ type: 'request:denied', requestId });
+    emitRequestDenied(requestId: string, activity: ActivityEntry): void {
+        this.emit({ type: 'request:denied', requestId, activity });
     }
 
     /**
@@ -166,6 +169,13 @@ export class EventService {
     }
 
     /**
+     * Emit an apps:updated event (bulk change, clients should refetch)
+     */
+    emitAppsUpdated(): void {
+        this.emit({ type: 'apps:updated' });
+    }
+
+    /**
      * Emit a key:renamed event
      */
     emitKeyRenamed(oldName: string, newName: string): void {
@@ -177,6 +187,13 @@ export class EventService {
      */
     emitKeyUpdated(keyName: string): void {
         this.emit({ type: 'key:updated', keyName });
+    }
+
+    /**
+     * Emit an admin:event for admin activity (key lock/unlock, app suspend/unsuspend, daemon start)
+     */
+    emitAdminEvent(activity: AdminActivityEntry): void {
+        this.emit({ type: 'admin:event', activity });
     }
 }
 

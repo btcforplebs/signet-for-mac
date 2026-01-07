@@ -15,7 +15,7 @@ data class DashboardStats(
 )
 
 /**
- * Activity entry for dashboard timeline
+ * Activity entry for dashboard timeline (NIP-46 requests)
  */
 @Serializable
 data class ActivityEntry(
@@ -32,12 +32,70 @@ data class ActivityEntry(
 )
 
 /**
+ * Admin activity entry for admin events (key lock/unlock, app suspend/resume, daemon start, commands)
+ */
+@Serializable
+data class AdminActivityEntry(
+    val id: Int,
+    val timestamp: String,
+    val category: String,  // Always 'admin'
+    val eventType: String,  // 'key_locked' | 'key_unlocked' | 'app_suspended' | 'app_unsuspended' | 'daemon_started' | 'status_checked' | 'command_executed'
+    val keyName: String? = null,
+    val appId: Int? = null,
+    val appName: String? = null,
+    val clientName: String? = null,
+    val clientVersion: String? = null,
+    val ipAddress: String? = null,
+    val command: String? = null,
+    val commandResult: String? = null
+)
+
+/**
+ * Mixed activity entry - can represent either a NIP-46 activity or an admin event
+ * Uses a flat structure with all possible fields, determined by 'category' field
+ */
+@Serializable
+data class MixedActivityEntry(
+    val id: Int,
+    val timestamp: String,
+    // Common fields
+    val keyName: String? = null,
+    val appName: String? = null,
+    // NIP-46 activity fields
+    val type: String? = null,  // 'approval' | 'denial'
+    val method: String? = null,
+    val eventKind: Int? = null,
+    val userPubkey: String? = null,
+    val autoApproved: Boolean? = null,
+    val approvalType: String? = null,
+    // Admin event fields
+    val category: String? = null,  // 'admin' for admin events
+    val eventType: String? = null,  // 'key_locked' | 'key_unlocked' | 'app_suspended' | 'app_unsuspended' | 'daemon_started' | 'status_checked' | 'command_executed'
+    val appId: Int? = null,
+    val clientName: String? = null,
+    val clientVersion: String? = null,
+    val ipAddress: String? = null,
+    val command: String? = null,
+    val commandResult: String? = null
+) {
+    val isAdminEntry: Boolean get() = category == "admin"
+}
+
+/**
  * Dashboard API response
  */
 @Serializable
 data class DashboardResponse(
     val stats: DashboardStats,
-    val activity: List<ActivityEntry>
+    val activity: List<MixedActivityEntry>
+)
+
+/**
+ * Admin activity response for the admin filter
+ */
+@Serializable
+data class AdminActivityResponse(
+    val requests: List<AdminActivityEntry>
 )
 
 /**
@@ -218,4 +276,47 @@ data class ConnectionTokenResponse(
     val bunkerUri: String? = null,
     val expiresAt: String? = null,
     val error: String? = null
+)
+
+/**
+ * Memory usage stats
+ */
+@Serializable
+data class MemoryStats(
+    val heapMB: Double,
+    val rssMB: Double
+)
+
+/**
+ * Relay connection counts
+ */
+@Serializable
+data class RelayStats(
+    val connected: Int,
+    val total: Int
+)
+
+/**
+ * Key counts by status
+ */
+@Serializable
+data class KeyStats(
+    val active: Int,
+    val locked: Int,
+    val offline: Int
+)
+
+/**
+ * Health status from /health endpoint
+ */
+@Serializable
+data class HealthStatus(
+    val status: String,  // "ok" or "degraded"
+    val uptime: Int,
+    val memory: MemoryStats,
+    val relays: RelayStats,
+    val keys: KeyStats,
+    val subscriptions: Int,
+    val sseClients: Int,
+    val lastPoolReset: String? = null
 )

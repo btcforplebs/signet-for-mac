@@ -11,6 +11,23 @@ export interface StoredKey {
 }
 
 /**
+ * DM protocol type for kill switch commands
+ */
+export type KillSwitchDmType = 'NIP04' | 'NIP17';
+
+/**
+ * Kill switch configuration for remote admin commands via Nostr DMs
+ */
+export interface KillSwitchConfig {
+    /** Admin npub authorized to send commands */
+    adminNpub: string;
+    /** Relay URLs to listen for admin DMs */
+    adminRelays: string[];
+    /** DM protocol type (NIP04 or NIP17) */
+    dmType: KillSwitchDmType;
+}
+
+/**
  * Admin interface configuration
  */
 export interface AdminConfig {
@@ -55,4 +72,6 @@ export interface ConfigFile {
     allowedOrigins?: string[];
     /** Require authentication for API access (default: false for local use) */
     requireAuth?: boolean;
+    /** Kill switch configuration for remote admin commands */
+    killSwitch?: KillSwitchConfig;
 }

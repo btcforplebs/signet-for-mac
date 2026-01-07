@@ -1,25 +1,45 @@
 import React from 'react';
-import type { DashboardStats, RelayStatusResponse } from '@signet/types';
-import { Radio, Key, Smartphone, Clock } from 'lucide-react';
+import type { DashboardStats, HealthStatus } from '@signet/types';
+import type { UIHealthStatus } from '../../hooks/useHealth.js';
+import { HeartPulse, Key, Smartphone, Clock } from 'lucide-react';
+import { formatUptime } from '../../lib/formatters.js';
 import styles from './HomeView.module.css';
 
 interface StatsRowProps {
   stats: DashboardStats | null;
-  relayStatus: RelayStatusResponse | null;
-  onRelaysClick?: () => void;
+  health: HealthStatus | null;
+  uiStatus: UIHealthStatus;
+  onStatusClick?: () => void;
   onKeysClick?: () => void;
   onAppsClick?: () => void;
   onActivityClick?: () => void;
 }
 
+const STATUS_LABELS: Record<UIHealthStatus, string> = {
+  healthy: 'Healthy',
+  degraded: 'Degraded',
+  offline: 'Offline',
+};
+
 export function StatsRow({
   stats,
-  relayStatus,
-  onRelaysClick,
+  health,
+  uiStatus,
+  onStatusClick,
   onKeysClick,
   onAppsClick,
   onActivityClick
 }: StatsRowProps) {
+  // Map status to icon style class
+  const statusIconClass = uiStatus === 'healthy'
+    ? styles.statIconHealthy
+    : uiStatus === 'degraded'
+      ? styles.statIconDegraded
+      : styles.statIconOffline;
+
+  // Format uptime or show dash if offline
+  const uptimeDisplay = health ? formatUptime(health.uptime) : '-';
+
   return (
     <section className={styles.statsSection}>
       <div className={styles.statsGrid}>
@@ -73,17 +93,15 @@ export function StatsRow({
         <button
           type="button"
           className={`${styles.statCard} ${styles.statCardClickable}`}
-          onClick={onRelaysClick}
-          aria-label="View relay status"
+          onClick={onStatusClick}
+          aria-label="View system status"
         >
-          <div className={`${styles.statIcon} ${styles.statIconRelays}`}>
-            <Radio size={24} />
+          <div className={`${styles.statIcon} ${statusIconClass}`}>
+            <HeartPulse size={24} />
           </div>
           <div className={styles.statContent}>
-            <span className={styles.statValue}>
-              {relayStatus ? `${relayStatus.connected}/${relayStatus.total}` : '-'}
-            </span>
-            <span className={styles.statLabel}>Relays</span>
+            <span className={styles.statValue}>{uptimeDisplay}</span>
+            <span className={styles.statLabel}>{STATUS_LABELS[uiStatus]}</span>
           </div>
         </button>
       </div>

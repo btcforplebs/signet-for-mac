@@ -20,6 +20,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import tech.geektoshi.signet.ui.theme.Danger
+import tech.geektoshi.signet.ui.theme.SignetPurple
 import tech.geektoshi.signet.ui.theme.Success
 import tech.geektoshi.signet.ui.theme.TextMuted
 import tech.geektoshi.signet.ui.theme.Warning
@@ -31,7 +32,8 @@ enum class BadgeStatus {
     AUTO_TRUST,
     AUTO_PERMISSION,
     DENIED,
-    EXPIRED
+    EXPIRED,
+    ADMIN
 }
 
 private data class BadgeConfig(
@@ -54,6 +56,7 @@ fun StatusBadge(
         BadgeStatus.AUTO_PERMISSION -> BadgeConfig("Approved", Success.copy(alpha = 0.15f), Success, Icons.Default.Refresh)
         BadgeStatus.DENIED -> BadgeConfig("Denied", Danger.copy(alpha = 0.15f), Danger)
         BadgeStatus.EXPIRED -> BadgeConfig("Expired", TextMuted.copy(alpha = 0.15f), TextMuted)
+        BadgeStatus.ADMIN -> BadgeConfig("Admin", SignetPurple.copy(alpha = 0.15f), SignetPurple)
     }
 
     Row(

@@ -3,16 +3,14 @@
    ============================================ */
 
 .card {
+  display: flex;
+  gap: var(--space-3);
   background: var(--surface-1);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-xl);
-  padding: var(--space-5);
+  padding: var(--space-3) var(--space-4);
   border-left: 3px solid var(--accent);
   transition: all var(--transition-fast);
-}
-
-.card.compact {
-  padding: var(--space-3) var(--space-4);
 }
 
 .card:hover {
@@ -32,10 +30,42 @@
   border-left-color: var(--danger);
 }
 
+/* Icon wrapper - spans both lines */
+.iconWrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: var(--surface-2);
+  border-radius: var(--radius-md);
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.card.approved .iconWrapper {
+  color: var(--success);
+}
+
+.card.denied .iconWrapper {
+  color: var(--danger);
+}
+
+.card.expired .iconWrapper {
+  color: var(--text-muted);
+}
+
+/* Content wrapper */
+.content {
+  flex: 1;
+  min-width: 0;
+}
+
 /* Header - Line 1: App name • key + Status */
 .header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--space-2);
 }
 
@@ -43,6 +73,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  min-width: 0;
 }
 
 .checkbox {
@@ -53,7 +84,6 @@
 }
 
 .appName {
-  flex: 1;
   font-weight: var(--font-semibold);
   color: var(--text-primary);
   font-size: var(--text-sm);
@@ -63,7 +93,7 @@
 .statusBadge {
   display: flex;
   align-items: center;
-  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .badgePending,
@@ -74,9 +104,9 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 8px;
-  font-size: 11px;
-  font-weight: var(--font-semibold);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: 500;
   border-radius: var(--radius-full);
 }
 
@@ -110,18 +140,12 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-}
-
-.methodIcon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--accent);
+  margin-top: var(--space-1);
 }
 
 .methodName {
-  font-size: var(--text-xs);
-  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
 }
 
 .detailsLink {

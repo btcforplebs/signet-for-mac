@@ -63,75 +63,81 @@ export function RequestCard({
 
   return (
     <div className={`${styles.card} ${styles[request.state]} ${showCompact ? styles.compact : ''}`}>
-      {/* Line 1: App name • key + Status badge */}
-      <div className={styles.header}>
-        {selectionMode && isPending && (
-          <input
-            type="checkbox"
-            checked={selected}
-            onChange={(e) => { e.stopPropagation(); onSelect(); }}
-            onClick={(e) => e.stopPropagation()}
-            className={styles.checkbox}
-            aria-label={`Select request ${request.id}`}
-          />
-        )}
-        <div className={styles.headerLeft}>
-          <span className={styles.appName}>
-            {request.appName || `${request.npub.slice(0, 16)}...`}
-          </span>
-          <span className={styles.separator}>•</span>
-          <span className={styles.keyName}>{request.keyName || 'Unknown key'}</span>
-        </div>
-        <div className={styles.statusBadge}>
-          {request.state === 'pending' && (
-            <span className={styles.badgePending}>{formatTtl(request.ttl)}</span>
-          )}
-          {request.state === 'expired' && (
-            <span className={styles.badgeExpired}>Expired</span>
-          )}
-          {request.state === 'approved' && (
-            request.approvalType === 'manual' ? (
-              <span className={styles.badgeApproved} title="Manually approved by you">
-                <Check size={12} /> Approved
-              </span>
-            ) : request.approvalType === 'auto_trust' ? (
-              <span className={styles.badgeAuto} title="Auto-approved by app's trust level">
-                <Shield size={12} /> Approved
-              </span>
-            ) : request.approvalType === 'auto_permission' ? (
-              <span className={styles.badgeAuto} title="Auto-approved by saved permission">
-                <Repeat size={12} /> Approved
-              </span>
-            ) : request.autoApproved ? (
-              <span className={styles.badgeAuto}>Auto Approved</span>
-            ) : (
-              <span className={styles.badgeApproved}>Approved</span>
-            )
-          )}
-          {request.state === 'denied' && (
-            <span className={styles.badgeDenied}>Denied</span>
-          )}
-        </div>
+      {selectionMode && isPending && (
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={(e) => { e.stopPropagation(); onSelect(); }}
+          onClick={(e) => e.stopPropagation()}
+          className={styles.checkbox}
+          aria-label={`Select request ${request.id}`}
+        />
+      )}
+
+      {/* Icon on the left, spanning both lines */}
+      <div className={styles.iconWrapper} aria-hidden="true">
+        <MethodIcon size={18} />
       </div>
 
-      {/* Line 2: Icon + event info (Details) • timestamp */}
-      <div className={styles.methodRow}>
-        <span className={styles.methodIcon} aria-hidden="true">
-          <MethodIcon size={14} />
-        </span>
-        <span className={styles.methodName}>
-          {getMethodLabel(request.method, eventKind)}
-        </span>
-        <button
-          type="button"
-          className={styles.detailsLink}
-          onClick={onViewDetails}
-          aria-label={`View details for ${request.appName || 'request'}`}
-        >
-          (Details)
-        </button>
-        <span className={styles.separator}>•</span>
-        <span className={styles.time}>{request.createdLabel}</span>
+      {/* Content on the right */}
+      <div className={styles.content}>
+        {/* Line 1: App name • key + Status badge */}
+        <div className={styles.header}>
+          <div className={styles.headerLeft}>
+            <span className={styles.appName}>
+              {request.appName || `${request.npub.slice(0, 16)}...`}
+            </span>
+            <span className={styles.separator}>•</span>
+            <span className={styles.keyName}>{request.keyName || 'Unknown key'}</span>
+          </div>
+          <div className={styles.statusBadge}>
+            {request.state === 'pending' && (
+              <span className={styles.badgePending}>{formatTtl(request.ttl)}</span>
+            )}
+            {request.state === 'expired' && (
+              <span className={styles.badgeExpired}>Expired</span>
+            )}
+            {request.state === 'approved' && (
+              request.approvalType === 'manual' ? (
+                <span className={styles.badgeApproved} title="Manually approved by you">
+                  <Check size={12} /> Approved
+                </span>
+              ) : request.approvalType === 'auto_trust' ? (
+                <span className={styles.badgeAuto} title="Auto-approved by app's trust level">
+                  <Shield size={12} /> Approved
+                </span>
+              ) : request.approvalType === 'auto_permission' ? (
+                <span className={styles.badgeAuto} title="Auto-approved by saved permission">
+                  <Repeat size={12} /> Approved
+                </span>
+              ) : request.autoApproved ? (
+                <span className={styles.badgeAuto}>Auto Approved</span>
+              ) : (
+                <span className={styles.badgeApproved}>Approved</span>
+              )
+            )}
+            {request.state === 'denied' && (
+              <span className={styles.badgeDenied}>Denied</span>
+            )}
+          </div>
+        </div>
+
+        {/* Line 2: Method (Details) • timestamp */}
+        <div className={styles.methodRow}>
+          <span className={styles.methodName}>
+            {getMethodLabel(request.method, eventKind)}
+          </span>
+          <button
+            type="button"
+            className={styles.detailsLink}
+            onClick={onViewDetails}
+            aria-label={`View details for ${request.appName || 'request'}`}
+          >
+            (Details)
+          </button>
+          <span className={styles.separator}>•</span>
+          <span className={styles.time}>{request.createdLabel}</span>
+        </div>
       </div>
 
       {/* Expandable content for pending requests */}

@@ -23,6 +23,17 @@ import type { KeyService, RequestService, AppService, DashboardService, EventSer
 import type { ConnectionManager } from '../connection-manager.js';
 import type { NostrConfig } from '../../config/types.js';
 
+export interface HealthStatus {
+    status: 'ok' | 'degraded';
+    uptime: number;
+    memory: { heapMB: number; rssMB: number };
+    relays: { connected: number; total: number };
+    keys: { active: number; locked: number; offline: number };
+    subscriptions: number;
+    sseClients: number;
+    lastPoolReset: string | null;
+}
+
 export interface HttpServerConfig {
     port: number;
     host: string;
@@ -38,6 +49,7 @@ export interface HttpServerConfig {
     dashboardService: DashboardService;
     eventService: EventService;
     relayService: RelayService;
+    getHealthStatus?: () => HealthStatus;
 }
 
 export class HttpServer {
@@ -115,7 +127,11 @@ export class HttpServer {
         const useSecureCookies = this.config.baseUrl?.startsWith('https://') ?? false;
 
         // Health check endpoint (no auth required)
+        // Returns full status if getHealthStatus is provided, otherwise simple status
         this.fastify.get('/health', async (_request, reply) => {
+            if (this.config.getHealthStatus) {
+                return reply.send(this.config.getHealthStatus());
+            }
             return reply.send({ status: 'ok' });
         });
 

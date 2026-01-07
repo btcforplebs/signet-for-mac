@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import type { DisplayRequest, DashboardStats, TrustLevel, RelayStatusResponse, ActivityEntry } from '@signet/types';
+import type { DisplayRequest, DashboardStats, TrustLevel, RelayStatusResponse, MixedActivityEntry, HealthStatus } from '@signet/types';
+import type { UIHealthStatus } from '../../hooks/useHealth.js';
 import { Key } from 'lucide-react';
 import { PageHeader } from '../shared/PageHeader.js';
 import { SkeletonStatCard, SkeletonCard } from '../shared/Skeleton.js';
-import { RelayDetailModal } from '../shared/RelayDetailModal.js';
+import { SystemStatusModal } from '../shared/SystemStatusModal.js';
 import { StatsRow } from './StatsRow.js';
 import { PendingRequestsList } from './PendingRequestsList.js';
 import { RecentActivityFeed } from './RecentActivityFeed.js';
@@ -12,8 +13,10 @@ import styles from './HomeView.module.css';
 interface HomeViewProps {
   requests: DisplayRequest[];
   stats: DashboardStats | null;
-  activity: ActivityEntry[];
+  activity: MixedActivityEntry[];
   loading: boolean;
+  health: HealthStatus | null;
+  uiStatus: UIHealthStatus;
   relayStatus: RelayStatusResponse | null;
   passwords: Record<string, string>;
   appNames: Record<string, string>;
@@ -34,6 +37,8 @@ export function HomeView({
   stats,
   activity,
   loading,
+  health,
+  uiStatus,
   relayStatus,
   passwords,
   appNames,
@@ -48,7 +53,7 @@ export function HomeView({
   onNavigateToApps,
   onToggleShowAutoApproved,
 }: HomeViewProps) {
-  const [relayModalOpen, setRelayModalOpen] = useState(false);
+  const [statusModalOpen, setStatusModalOpen] = useState(false);
 
   if (loading) {
     return (
@@ -93,16 +98,19 @@ export function HomeView({
 
       <StatsRow
         stats={stats}
-        relayStatus={relayStatus}
-        onRelaysClick={() => setRelayModalOpen(true)}
+        health={health}
+        uiStatus={uiStatus}
+        onStatusClick={() => setStatusModalOpen(true)}
         onKeysClick={onNavigateToKeys}
         onAppsClick={onNavigateToApps}
         onActivityClick={onNavigateToActivity}
       />
 
-      <RelayDetailModal
-        open={relayModalOpen}
-        onClose={() => setRelayModalOpen(false)}
+      <SystemStatusModal
+        open={statusModalOpen}
+        onClose={() => setStatusModalOpen(false)}
+        health={health}
+        uiStatus={uiStatus}
         relayStatus={relayStatus}
       />
 

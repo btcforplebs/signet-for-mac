@@ -74,6 +74,12 @@ export async function runStart(options: StartOptions): Promise<void> {
 
     await saveConfig(options.configPath, config);
 
+    // Log kill switch status
+    if (config.killSwitch) {
+        console.log(`Kill switch enabled: listening for ${config.killSwitch.dmType} DMs from ${config.killSwitch.adminNpub}`);
+        console.log(`Kill switch relays: ${config.killSwitch.adminRelays.join(', ')}`);
+    }
+
     const keysToStart = options.keyNames ?? [];
     const activeKeys: Record<string, string> = {};
 
@@ -97,12 +103,13 @@ export async function runStart(options: StartOptions): Promise<void> {
     }
 
     const daemon = fork(daemonEntry);
-    const { keys: storedKeys, ...restConfig } = config;
+    const { keys: storedKeys, killSwitch, ...restConfig } = config;
     const payload: DaemonBootstrapConfig = {
         ...restConfig,
         keys: activeKeys,
         configFile: options.configPath,
         allKeys: { ...storedKeys },
+        killSwitch,
     };
 
     daemon.send(payload);

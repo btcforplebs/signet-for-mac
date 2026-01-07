@@ -1,5 +1,5 @@
 import prisma from '../../db.js';
-import { invalidateAclCache, invalidateAclCacheForKey } from '../lib/acl.js';
+import { invalidateAclCache, invalidateAclCacheForKey, clearAclCache } from '../lib/acl.js';
 
 export interface AppRecord {
     id: number;
@@ -241,6 +241,26 @@ export class AppRepository {
             select: { keyName: true, userPubkey: true },
         });
         invalidateAclCache(keyUser.keyName, keyUser.userPubkey);
+    }
+
+    /**
+     * Suspend all active (non-revoked, non-suspended) apps.
+     * Used by the kill switch.
+     * Returns the count of apps that were suspended.
+     */
+    async suspendAll(): Promise<number> {
+        const result = await prisma.keyUser.updateMany({
+            where: {
+                revokedAt: null,
+                suspendedAt: null,
+            },
+            data: {
+                suspendedAt: new Date(),
+            },
+        });
+        // Clear entire ACL cache since we suspended many apps
+        clearAclCache();
+        return result.count;
     }
 }
 

@@ -73,6 +73,42 @@ fun DateGroup.toDisplayString(): String = when (this) {
 }
 
 /**
+ * Formats uptime in seconds to a human-readable string.
+ * Uses 2 significant units max, switches to months/years for long uptimes.
+ * Examples: "45s", "5h 30m", "3d 12h", "2mo 15d", "1y 3mo"
+ */
+fun formatUptime(seconds: Int): String {
+    if (seconds < 60) return "${seconds}s"
+
+    val minutes = seconds / 60
+    if (minutes < 60) return "${minutes}m"
+
+    val hours = seconds / 3600
+    if (hours < 24) {
+        val mins = (seconds % 3600) / 60
+        return if (mins > 0) "${hours}h ${mins}m" else "${hours}h"
+    }
+
+    val days = seconds / 86400
+    if (days < 30) {
+        val hrs = (seconds % 86400) / 3600
+        return if (hrs > 0) "${days}d ${hrs}h" else "${days}d"
+    }
+
+    // 30+ days: use months
+    val months = days / 30
+    if (days < 365) {
+        val remainingDays = days % 30
+        return if (remainingDays > 0) "${months}mo ${remainingDays}d" else "${months}mo"
+    }
+
+    // 365+ days: use years
+    val years = days / 365
+    val remainingMonths = (days % 365) / 30
+    return if (remainingMonths > 0) "${years}y ${remainingMonths}mo" else "${years}y"
+}
+
+/**
  * Formats a future ISO timestamp as a compact string.
  * Examples: "3:45 PM", "Jan 5, 3:45 PM", "Jan 5, 2027"
  */

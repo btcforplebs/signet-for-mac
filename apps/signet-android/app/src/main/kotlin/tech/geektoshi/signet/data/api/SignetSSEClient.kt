@@ -1,11 +1,15 @@
 package tech.geektoshi.signet.data.api
 
+import tech.geektoshi.signet.data.model.ActivityEntry
 import tech.geektoshi.signet.data.model.DashboardStats
+import tech.geektoshi.signet.data.model.MixedActivityEntry
 import tech.geektoshi.signet.data.model.PendingRequest
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.defaultRequest
+import io.ktor.client.request.header
 import io.ktor.client.request.prepareGet
+import tech.geektoshi.signet.BuildConfig
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.utils.io.readUTF8Line
 import kotlinx.coroutines.CancellationException
@@ -35,13 +39,15 @@ sealed class ServerEvent {
     @Serializable
     data class RequestApproved(
         val type: String = "request:approved",
-        val requestId: String
+        val requestId: String,
+        val activity: ActivityEntry
     ) : ServerEvent()
 
     @Serializable
     data class RequestDenied(
         val type: String = "request:denied",
-        val requestId: String
+        val requestId: String,
+        val activity: ActivityEntry
     ) : ServerEvent()
 
     @Serializable
@@ -52,7 +58,13 @@ sealed class ServerEvent {
 
     @Serializable
     data class RequestAutoApproved(
-        val type: String = "request:auto_approved"
+        val type: String = "request:auto_approved",
+        val activity: ActivityEntry
+    ) : ServerEvent()
+
+    @Serializable
+    data class Ping(
+        val type: String = "ping"
     ) : ServerEvent()
 
     @Serializable
@@ -102,6 +114,12 @@ sealed class ServerEvent {
     ) : ServerEvent()
 
     @Serializable
+    data class AdminEvent(
+        val type: String = "admin:event",
+        val activity: MixedActivityEntry
+    ) : ServerEvent()
+
+    @Serializable
     data class Unknown(val type: String) : ServerEvent()
 }
 
@@ -130,6 +148,8 @@ class SignetSSEClient(
     private val client = HttpClient(OkHttp) {
         defaultRequest {
             url(baseUrl)
+            // Identify client for admin activity logging
+            header("X-Signet-Client", "Signet Android/${BuildConfig.VERSION_NAME}")
         }
     }
 
@@ -203,7 +223,7 @@ class SignetSSEClient(
                 "request:approved" -> json.decodeFromString<ServerEvent.RequestApproved>(data)
                 "request:denied" -> json.decodeFromString<ServerEvent.RequestDenied>(data)
                 "request:expired" -> json.decodeFromString<ServerEvent.RequestExpired>(data)
-                "request:auto_approved" -> ServerEvent.RequestAutoApproved()
+                "request:auto_approved" -> json.decodeFromString<ServerEvent.RequestAutoApproved>(data)
                 "stats:updated" -> json.decodeFromString<ServerEvent.StatsUpdated>(data)
                 "app:connected" -> ServerEvent.AppConnected()
                 "app:revoked" -> json.decodeFromString<ServerEvent.AppRevoked>(data)
@@ -213,6 +233,8 @@ class SignetSSEClient(
                 "key:deleted" -> json.decodeFromString<ServerEvent.KeyDeleted>(data)
                 "key:renamed" -> json.decodeFromString<ServerEvent.KeyRenamed>(data)
                 "key:updated" -> json.decodeFromString<ServerEvent.KeyUpdated>(data)
+                "admin:event" -> json.decodeFromString<ServerEvent.AdminEvent>(data)
+                "ping" -> ServerEvent.Ping()
                 else -> ServerEvent.Unknown(type)
             }
         } catch (e: Exception) {

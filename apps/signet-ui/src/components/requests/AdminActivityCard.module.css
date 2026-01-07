@@ -1,0 +1,62 @@
+/* ============================================
+   Admin Activity Card
+   ============================================ */
+
+.card {
+  display: flex;
+  gap: var(--space-3);
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  padding: var(--space-3) var(--space-4);
+  border-left: 3px solid var(--info);
+  transition: all var(--transition-fast);
+}
+
+.card:hover {
+  border-color: var(--border);
+}
+
+.iconWrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: var(--surface-2);
+  border-radius: var(--radius-md);
+  color: var(--info);
+  flex-shrink: 0;
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.label {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.badge {
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--info);
+  background: color-mix(in srgb, var(--info) 15%, transparent);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-full);
+}
+
+.details {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin-top: var(--space-1);
+}

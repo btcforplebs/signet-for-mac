@@ -1,15 +1,19 @@
 import type { DashboardStats, ActivityEntry } from '@signet/types';
 import type { StoredKey } from '../../config/types.js';
 import { appRepository, logRepository, requestRepository } from '../repositories/index.js';
+import { adminLogRepository, type AdminActivityEntry } from '../repositories/admin-log-repository.js';
 
 export interface DashboardServiceConfig {
     allKeys: Record<string, StoredKey>;
     getActiveKeyCount: () => number;
 }
 
+// Union type for mixed activity feed (regular NIP-46 + admin events)
+export type MixedActivityEntry = ActivityEntry | AdminActivityEntry;
+
 export interface DashboardData {
     stats: DashboardStats;
-    activity: ActivityEntry[];
+    activity: MixedActivityEntry[];
     hourlyActivity: Array<{ hour: number; type: string; count: number }>;
 }
 
@@ -53,22 +57,31 @@ export class DashboardService {
         const yesterday = new Date();
         yesterday.setDate(yesterday.getDate() - 1);
 
-        // Run all independent queries in parallel (5 queries -> 1 round trip)
+        // Run all independent queries in parallel (6 queries -> 1 round trip)
         const [
             connectedApps,
             pendingRequests,
             recentActivity24h,
             hourlyActivity,
             recentLogs,
+            recentAdminLogs,
         ] = await Promise.all([
             appRepository.countActive(),
             requestRepository.countPending(),
             logRepository.countSince(yesterday),
             logRepository.getHourlyActivityRaw(),
             logRepository.findRecent(5),
+            adminLogRepository.findRecent(5),
         ]);
 
-        const activity = recentLogs.map(log => logRepository.toActivityEntry(log));
+        // Convert to activity entries
+        const nip46Activity = recentLogs.map(log => logRepository.toActivityEntry(log));
+        const adminActivity = recentAdminLogs.map(log => adminLogRepository.toActivityEntry(log));
+
+        // Merge and sort by timestamp (newest first), take top 5
+        const activity: MixedActivityEntry[] = [...nip46Activity, ...adminActivity]
+            .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+            .slice(0, 5);
 
         return {
             stats: {

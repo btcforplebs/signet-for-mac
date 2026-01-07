@@ -1,8 +1,10 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { KeyService } from '../../services/index.js';
-import { emitCurrentStats, getConnectionTokenService } from '../../services/index.js';
+import { emitCurrentStats, getConnectionTokenService, getEventService } from '../../services/index.js';
 import type { PreHandlerFull } from '../types.js';
 import { sendError } from '../../lib/route-errors.js';
+import { adminLogRepository } from '../../repositories/admin-log-repository.js';
+import { getClientInfo } from '../../lib/client-info.js';
 
 export interface KeysRouteConfig {
     keyService: KeyService;
@@ -55,8 +57,19 @@ export function registerKeysRoutes(
         try {
             await config.keyService.unlockKey(keyName, passphrase);
 
+            // Log admin event
+            const clientInfo = getClientInfo(request);
+            const adminLog = await adminLogRepository.create({
+                eventType: 'key_unlocked',
+                keyName,
+                ...clientInfo,
+            });
+
             // Emit stats update (active key count changed)
             await emitCurrentStats();
+
+            // Emit admin event for real-time updates
+            getEventService().emitAdminEvent(adminLogRepository.toActivityEntry(adminLog));
 
             return reply.send({ ok: true });
         } catch (error) {
@@ -71,8 +84,19 @@ export function registerKeysRoutes(
         try {
             config.keyService.lockKey(keyName);
 
+            // Log admin event
+            const clientInfo = getClientInfo(request);
+            const adminLog = await adminLogRepository.create({
+                eventType: 'key_locked',
+                keyName,
+                ...clientInfo,
+            });
+
             // Emit stats update (active key count changed)
             await emitCurrentStats();
+
+            // Emit admin event for real-time updates
+            getEventService().emitAdminEvent(adminLogRepository.toActivityEntry(adminLog));
 
             return reply.send({ ok: true });
         } catch (error) {

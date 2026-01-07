@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import type { DashboardStats, ActivityEntry } from '@signet/types';
+import type { DashboardStats, MixedActivityEntry } from '@signet/types';
 import { apiGet } from '../lib/api-client.js';
 import { buildErrorMessage } from '../lib/formatters.js';
 import { useSSESubscription } from '../contexts/ServerEventsContext.js';
@@ -7,13 +7,13 @@ import type { ServerEvent } from './useServerEvents.js';
 
 interface DashboardData {
   stats: DashboardStats;
-  activity: ActivityEntry[];
+  activity: MixedActivityEntry[];
   hourlyActivity?: Array<{ hour: number; type: string; count: number }>;
 }
 
 interface UseDashboardResult {
   stats: DashboardStats | null;
-  activity: ActivityEntry[];
+  activity: MixedActivityEntry[];
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
@@ -21,7 +21,7 @@ interface UseDashboardResult {
 
 export function useDashboard(): UseDashboardResult {
   const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [activity, setActivity] = useState<ActivityEntry[]>([]);
+  const [activity, setActivity] = useState<MixedActivityEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,8 +60,13 @@ export function useDashboard(): UseDashboardResult {
       return;
     }
 
-    // Handle activity updates for auto-approved requests
-    if (event.type === 'request:auto_approved') {
+    // Handle activity updates for all request outcomes
+    if (event.type === 'request:auto_approved' || event.type === 'request:approved' || event.type === 'request:denied') {
+      setActivity(prev => [event.activity, ...prev].slice(0, 20));
+    }
+
+    // Handle admin events (key lock/unlock, app suspend/unsuspend, daemon start)
+    if (event.type === 'admin:event') {
       setActivity(prev => [event.activity, ...prev].slice(0, 20));
     }
   }, [refresh]);

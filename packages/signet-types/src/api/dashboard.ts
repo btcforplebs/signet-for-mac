@@ -18,7 +18,7 @@ export interface DashboardStats {
 export type ApprovalType = 'manual' | 'auto_trust' | 'auto_permission';
 
 /**
- * A single activity entry for the dashboard timeline
+ * A single activity entry for the dashboard timeline (NIP-46 requests)
  */
 export interface ActivityEntry {
     id: number;
@@ -32,6 +32,41 @@ export interface ActivityEntry {
     autoApproved: boolean;
     approvalType?: ApprovalType;
 }
+
+/**
+ * Admin event types for admin activity tracking
+ */
+export type AdminEventType =
+    | 'key_locked'
+    | 'key_unlocked'
+    | 'app_suspended'
+    | 'app_unsuspended'
+    | 'daemon_started'
+    | 'status_checked'
+    | 'command_executed';
+
+/**
+ * An admin activity entry (key lock/unlock, app suspend/unsuspend, daemon start, status check, command executed)
+ */
+export interface AdminActivityEntry {
+    id: number;
+    timestamp: string;
+    category: 'admin';
+    eventType: AdminEventType;
+    keyName?: string;
+    appId?: number;
+    appName?: string;
+    clientName?: string;
+    clientVersion?: string;
+    ipAddress?: string;
+    command?: string;
+    commandResult?: string;
+}
+
+/**
+ * Union type for mixed activity feed (NIP-46 requests + admin events)
+ */
+export type MixedActivityEntry = ActivityEntry | AdminActivityEntry;
 
 /**
  * Dashboard API response

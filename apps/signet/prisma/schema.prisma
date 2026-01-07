@@ -140,3 +140,20 @@ model ConnectionToken {
   @@index([keyName])
   @@index([token])
 }
+
+model AdminLog {
+  id            Int       @id @default(autoincrement())
+  timestamp     DateTime  @default(now())
+  eventType     String    // key_locked, key_unlocked, app_suspended, app_unsuspended, daemon_started, command_executed
+  keyName       String?   // For key events
+  appId         Int?      // For app events (KeyUser id)
+  appName       String?   // Denormalized for display
+  clientName    String?   // signet-ui, signet-android, kill-switch
+  clientVersion String?   // e.g., 1.3.0
+  ipAddress     String?   // Client IP address
+  command       String?   // For command_executed: the command that was sent
+  commandResult String?   // For command_executed: the result/outcome
+
+  @@index([timestamp])
+  @@index([eventType])
+}

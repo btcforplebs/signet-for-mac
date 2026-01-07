@@ -197,6 +197,21 @@ export class AppService {
             getEventService().emitAppUpdated(updatedApp);
         }
     }
+
+    /**
+     * Suspend all active apps.
+     * Used by the kill switch to quickly disable all app access.
+     * Returns the count of apps that were suspended.
+     */
+    async suspendAllApps(): Promise<number> {
+        const count = await appRepository.suspendAll();
+
+        // Emit event for real-time updates
+        // We emit a generic "apps updated" event since many apps changed
+        getEventService().emitAppsUpdated();
+
+        return count;
+    }
 }
 
 export const appService = new AppService();

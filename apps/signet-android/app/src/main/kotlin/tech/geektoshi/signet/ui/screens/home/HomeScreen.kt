@@ -15,9 +15,18 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Key
-import androidx.compose.material.icons.outlined.SettingsInputAntenna
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.LockOpen
+import androidx.compose.material.icons.outlined.Pause
+import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Power
+import androidx.compose.material.icons.outlined.Build
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -45,14 +54,18 @@ import tech.geektoshi.signet.data.api.SignetApiClient
 import tech.geektoshi.signet.data.model.ActivityEntry
 import tech.geektoshi.signet.data.model.DashboardResponse
 import tech.geektoshi.signet.data.model.DashboardStats
+import tech.geektoshi.signet.data.model.HealthStatus
+import tech.geektoshi.signet.data.model.MixedActivityEntry
 import tech.geektoshi.signet.data.model.PendingRequest
 import tech.geektoshi.signet.data.model.RelaysResponse
 import tech.geektoshi.signet.data.repository.EventBusRepository
 import tech.geektoshi.signet.data.repository.SettingsRepository
 import tech.geektoshi.signet.ui.components.BadgeStatus
 import tech.geektoshi.signet.ui.components.EmptyState
-import tech.geektoshi.signet.ui.components.RelayDetailSheet
 import tech.geektoshi.signet.ui.components.RequestDetailSheet
+import tech.geektoshi.signet.ui.components.SystemStatusSheet
+import tech.geektoshi.signet.ui.components.UIHealthStatus
+import tech.geektoshi.signet.ui.components.toUIStatus
 import tech.geektoshi.signet.ui.components.SkeletonActivityCard
 import tech.geektoshi.signet.ui.components.SkeletonRequestCard
 import tech.geektoshi.signet.ui.components.SkeletonStatCard
@@ -61,11 +74,13 @@ import tech.geektoshi.signet.ui.components.pressScale
 import tech.geektoshi.signet.ui.theme.BgSecondary
 import tech.geektoshi.signet.ui.theme.Danger
 import tech.geektoshi.signet.ui.theme.SignetPurple
+import tech.geektoshi.signet.ui.theme.Success
 import tech.geektoshi.signet.ui.theme.TextMuted
 import tech.geektoshi.signet.ui.theme.TextPrimary
 import tech.geektoshi.signet.ui.theme.TextSecondary
 import tech.geektoshi.signet.ui.theme.Warning
 import tech.geektoshi.signet.util.formatRelativeTime
+import tech.geektoshi.signet.util.formatUptime
 import tech.geektoshi.signet.util.getMethodIcon
 import tech.geektoshi.signet.util.getMethodLabel
 import tech.geektoshi.signet.util.getMethodLabelPastTense
@@ -86,8 +101,9 @@ fun HomeScreen(
     var dashboard by remember { mutableStateOf<DashboardResponse?>(null) }
     var pendingRequests by remember { mutableStateOf<List<PendingRequest>>(emptyList()) }
     var relays by remember { mutableStateOf<RelaysResponse?>(null) }
+    var health by remember { mutableStateOf<HealthStatus?>(null) }
     var selectedRequest by remember { mutableStateOf<PendingRequest?>(null) }
-    var showRelaySheet by remember { mutableStateOf(false) }
+    var showStatusSheet by remember { mutableStateOf(false) }
     var refreshCounter by remember { mutableIntStateOf(0) }
     val defaultTrustLevel by settingsRepository.defaultTrustLevel.collectAsState(initial = "reasonable")
     val eventBus = remember { EventBusRepository.getInstance() }
@@ -113,12 +129,19 @@ fun HomeScreen(
                 is ServerEvent.RequestApproved -> {
                     // Remove from pending list
                     pendingRequests = pendingRequests.filter { it.id != event.requestId }
-                    // Refresh to get updated activity
-                    refreshCounter++
+                    // Add to activity list directly from SSE data
+                    dashboard = dashboard?.let { d ->
+                        val newActivity = event.activity.toMixedEntry()
+                        d.copy(activity = listOf(newActivity) + d.activity.take(19))
+                    }
                 }
                 is ServerEvent.RequestDenied -> {
                     pendingRequests = pendingRequests.filter { it.id != event.requestId }
-                    refreshCounter++
+                    // Add to activity list directly from SSE data
+                    dashboard = dashboard?.let { d ->
+                        val newActivity = event.activity.toMixedEntry()
+                        d.copy(activity = listOf(newActivity) + d.activity.take(19))
+                    }
                 }
                 is ServerEvent.RequestExpired -> {
                     pendingRequests = pendingRequests.filter { it.id != event.requestId }
@@ -132,8 +155,20 @@ fun HomeScreen(
                     refreshCounter++
                 }
                 is ServerEvent.RequestAutoApproved -> {
-                    // Auto-approved requests may update activity, refresh
-                    refreshCounter++
+                    // Add auto-approved activity directly from SSE data
+                    dashboard = dashboard?.let { d ->
+                        val newActivity = event.activity.toMixedEntry()
+                        d.copy(activity = listOf(newActivity) + d.activity.take(19))
+                    }
+                }
+                is ServerEvent.AdminEvent -> {
+                    // Add admin event to activity directly from SSE data
+                    dashboard = dashboard?.let { d ->
+                        d.copy(activity = listOf(event.activity) + d.activity.take(19))
+                    }
+                }
+                is ServerEvent.Ping -> {
+                    // Heartbeat - ignore
                 }
                 else -> {}
             }
@@ -151,14 +186,14 @@ fun HomeScreen(
         )
     }
 
-    // Show relay status sheet
-    if (showRelaySheet) {
-        relays?.let { relayData ->
-            RelayDetailSheet(
-                relays = relayData,
-                onDismiss = { showRelaySheet = false }
-            )
-        }
+    // Show system status sheet
+    if (showStatusSheet) {
+        SystemStatusSheet(
+            health = health,
+            relays = relays,
+            uiStatus = health.toUIStatus(),
+            onDismiss = { showStatusSheet = false }
+        )
     }
 
     LaunchedEffect(daemonUrl, refreshCounter) {
@@ -170,6 +205,7 @@ fun HomeScreen(
                 dashboard = client.getDashboard()
                 pendingRequests = client.getRequests(status = "pending").requests
                 relays = client.getRelays()
+                health = client.getHealth()
                 client.close()
             } catch (e: Exception) {
                 error = e.message ?: "Failed to connect"
@@ -287,11 +323,20 @@ fun HomeScreen(
                     onClick = onNavigateToApps
                 )
                 StatCard(
-                    icon = Icons.Outlined.SettingsInputAntenna,
-                    title = "Relays",
-                    value = relays?.let { "${it.connected}/${it.total}" } ?: "-",
+                    icon = Icons.Outlined.FavoriteBorder,
+                    title = when (health.toUIStatus()) {
+                        UIHealthStatus.HEALTHY -> "Healthy"
+                        UIHealthStatus.DEGRADED -> "Degraded"
+                        UIHealthStatus.OFFLINE -> "Offline"
+                    },
+                    value = health?.let { formatUptime(it.uptime) } ?: "-",
                     modifier = Modifier.weight(1f),
-                    onClick = { relays?.let { showRelaySheet = true } }
+                    iconTint = when (health.toUIStatus()) {
+                        UIHealthStatus.HEALTHY -> Success
+                        UIHealthStatus.DEGRADED -> Warning
+                        UIHealthStatus.OFFLINE -> Danger
+                    },
+                    onClick = { showStatusSheet = true }
                 )
             }
         }
@@ -364,6 +409,7 @@ private fun StatCard(
     title: String,
     value: String,
     modifier: Modifier = Modifier,
+    iconTint: Color = TextSecondary,
     onClick: (() -> Unit)? = null
 ) {
     Card(
@@ -393,7 +439,7 @@ private fun StatCard(
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = TextSecondary,
+                    tint = iconTint,
                     modifier = Modifier.size(14.dp)
                 )
                 Text(
@@ -448,7 +494,7 @@ private fun PendingRequestCard(
 }
 
 @Composable
-private fun ActivityCard(activity: ActivityEntry) {
+private fun ActivityCard(activity: MixedActivityEntry) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = BgSecondary)
@@ -459,57 +505,131 @@ private fun ActivityCard(activity: ActivityEntry) {
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            // Header: App name + Status badge
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = activity.appName ?: activity.userPubkey?.take(12)?.plus("...") ?: "Unknown",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = TextPrimary
-                )
-                StatusBadge(
-                    status = when {
-                        activity.type == "denial" -> BadgeStatus.DENIED
-                        activity.approvalType == "manual" -> BadgeStatus.APPROVED
-                        activity.approvalType == "auto_trust" -> BadgeStatus.AUTO_TRUST
-                        activity.approvalType == "auto_permission" -> BadgeStatus.AUTO_PERMISSION
-                        activity.autoApproved -> BadgeStatus.AUTO_APPROVED  // Backwards compat
-                        activity.type == "approval" -> BadgeStatus.APPROVED
-                        else -> BadgeStatus.APPROVED
-                    }
-                )
-            }
+            if (activity.isAdminEntry) {
+                // Admin event display
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = when (activity.eventType) {
+                            "daemon_started" -> activity.clientVersion?.let { "v$it" } ?: "Signet"
+                            "status_checked" -> "System status"
+                            "command_executed" -> activity.command ?: "Unknown command"
+                            else -> activity.keyName ?: activity.appName ?: "Unknown"
+                        },
+                        style = MaterialTheme.typography.titleSmall,
+                        color = TextPrimary
+                    )
+                    StatusBadge(status = BadgeStatus.ADMIN)
+                }
 
-            // Method icon + label
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                activity.method?.let { method ->
+                // Admin event icon + label
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                     Icon(
-                        imageVector = getMethodIcon(method),
+                        imageVector = getAdminEventIcon(activity.eventType ?: ""),
                         contentDescription = null,
                         modifier = Modifier.size(14.dp),
                         tint = SignetPurple
                     )
+                    Text(
+                        text = getAdminEventLabel(activity.eventType ?: ""),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = SignetPurple
+                    )
                 }
+
+                // Timestamp
                 Text(
-                    text = activity.method?.let { getMethodLabelPastTense(it, activity.eventKind) } ?: activity.type,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = SignetPurple
+                    text = formatRelativeTime(activity.timestamp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextMuted
+                )
+            } else {
+                // Regular NIP-46 activity display
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = activity.appName ?: activity.userPubkey?.take(12)?.plus("...") ?: "Unknown",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = TextPrimary
+                    )
+                    StatusBadge(
+                        status = when {
+                            activity.type == "denial" -> BadgeStatus.DENIED
+                            activity.approvalType == "manual" -> BadgeStatus.APPROVED
+                            activity.approvalType == "auto_trust" -> BadgeStatus.AUTO_TRUST
+                            activity.approvalType == "auto_permission" -> BadgeStatus.AUTO_PERMISSION
+                            activity.autoApproved == true -> BadgeStatus.AUTO_APPROVED  // Backwards compat
+                            activity.type == "approval" -> BadgeStatus.APPROVED
+                            else -> BadgeStatus.APPROVED
+                        }
+                    )
+                }
+
+                // Method icon + label
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    activity.method?.let { method ->
+                        Icon(
+                            imageVector = getMethodIcon(method),
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = SignetPurple
+                        )
+                    }
+                    Text(
+                        text = activity.method?.let { getMethodLabelPastTense(it, activity.eventKind) } ?: activity.type ?: "",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = SignetPurple
+                    )
+                }
+
+                // Timestamp + Key name
+                Text(
+                    text = "${formatRelativeTime(activity.timestamp)} • ${activity.keyName ?: "Unknown key"}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextMuted
                 )
             }
-
-            // Timestamp + Key name
-            Text(
-                text = "${formatRelativeTime(activity.timestamp)} • ${activity.keyName ?: "Unknown key"}",
-                style = MaterialTheme.typography.labelSmall,
-                color = TextMuted
-            )
         }
+    }
+}
+
+// Helper function to get icon for admin event types
+private fun getAdminEventIcon(eventType: String): ImageVector {
+    return when (eventType) {
+        "key_locked" -> Icons.Outlined.Lock
+        "key_unlocked" -> Icons.Outlined.LockOpen
+        "app_suspended" -> Icons.Outlined.Pause
+        "app_unsuspended" -> Icons.Outlined.PlayArrow
+        "daemon_started" -> Icons.Outlined.Power
+        "status_checked" -> Icons.Outlined.Search
+        "command_executed" -> Icons.Outlined.Build
+        else -> Icons.Outlined.Info
+    }
+}
+
+// Helper function to get label for admin event types
+private fun getAdminEventLabel(eventType: String): String {
+    return when (eventType) {
+        "key_locked" -> "Key locked"
+        "key_unlocked" -> "Key unlocked"
+        "app_suspended" -> "App suspended"
+        "app_unsuspended" -> "App resumed"
+        "daemon_started" -> "Daemon started"
+        "status_checked" -> "Status checked"
+        "command_executed" -> "Command executed"
+        else -> eventType
     }
 }
 
@@ -564,3 +684,25 @@ private fun OnboardingCard(onNavigateToKeys: () -> Unit) {
         }
     }
 }
+
+/**
+ * Convert an ActivityEntry to MixedActivityEntry for use in the activity list
+ */
+private fun ActivityEntry.toMixedEntry(): MixedActivityEntry = MixedActivityEntry(
+    id = id,
+    timestamp = timestamp,
+    keyName = keyName,
+    appName = appName,
+    type = type,
+    method = method,
+    eventKind = eventKind,
+    userPubkey = userPubkey,
+    autoApproved = autoApproved,
+    approvalType = approvalType,
+    category = null,
+    eventType = null,
+    appId = null,
+    clientName = null,
+    clientVersion = null,
+    ipAddress = null
+)

@@ -97,7 +97,7 @@ export function PendingRequestsList({
                   <div className={styles.listItemRow}>
                     <span className={styles.pendingDot} />
                     <span className={styles.listItemAppName}>
-                      {request.appName || request.npub.slice(0, 16) + '...'}
+                      {request.appName || (request.npub ? request.npub.slice(0, 16) + '...' : 'Unknown')}
                     </span>
                     <span className={styles.listItemTime}>
                       {request.createdLabel}
@@ -116,7 +116,7 @@ export function PendingRequestsList({
                       <div className={styles.detailRow}>
                         <span className={styles.detailLabel}>From:</span>
                         <span className={styles.detailValue}>
-                          {request.appName || <code>{request.npub.slice(0, 20)}...</code>}
+                          {request.appName || (request.npub ? <code>{request.npub.slice(0, 20)}...</code> : 'Unknown')}
                         </span>
                       </div>
                       {request.requiresPassword && (

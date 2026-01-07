@@ -5,4 +5,6 @@ export type {
     AdminConfig,
     NostrConfig,
     ConfigFile,
+    KillSwitchConfig,
+    KillSwitchDmType,
 } from '@signet/types';

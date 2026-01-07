@@ -35,6 +35,12 @@ export type {
 export type {
     DashboardStats,
     ActivityEntry,
+    AdminEventType,
+    AdminActivityEntry,
+    MixedActivityEntry,
     DashboardResponse,
     ApprovalType,
 } from './dashboard.js';
+
+// Health types
+export type { HealthStatus } from './health.js';

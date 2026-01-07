@@ -1,9 +1,11 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { AppService } from '../../services/index.js';
-import { emitCurrentStats } from '../../services/index.js';
+import { emitCurrentStats, getEventService } from '../../services/index.js';
 import type { TrustLevel } from '@signet/types';
 import type { PreHandlerAuthCsrf } from '../types.js';
 import { sendError } from '../../lib/route-errors.js';
+import { adminLogRepository } from '../../repositories/admin-log-repository.js';
+import { getClientInfo } from '../../lib/client-info.js';
 
 export interface AppsRouteConfig {
     appService: AppService;
@@ -95,7 +97,24 @@ export function registerAppsRoutes(
         }
 
         try {
+            // Get app info before suspending for logging
+            const apps = await config.appService.listApps();
+            const app = apps.find(a => a.id === appId);
+
             await config.appService.suspendApp(appId, until);
+
+            // Log admin event
+            const clientInfo = getClientInfo(request);
+            const adminLog = await adminLogRepository.create({
+                eventType: 'app_suspended',
+                appId,
+                appName: app?.description || app?.userPubkey.slice(0, 12),
+                ...clientInfo,
+            });
+
+            // Emit admin event for real-time updates
+            getEventService().emitAdminEvent(adminLogRepository.toActivityEntry(adminLog));
+
             return reply.send({ ok: true });
         } catch (error) {
             return sendError(reply, error);
@@ -112,7 +131,24 @@ export function registerAppsRoutes(
         }
 
         try {
+            // Get app info before unsuspending for logging
+            const apps = await config.appService.listApps();
+            const app = apps.find(a => a.id === appId);
+
             await config.appService.unsuspendApp(appId);
+
+            // Log admin event
+            const clientInfo = getClientInfo(request);
+            const adminLog = await adminLogRepository.create({
+                eventType: 'app_unsuspended',
+                appId,
+                appName: app?.description || app?.userPubkey.slice(0, 12),
+                ...clientInfo,
+            });
+
+            // Emit admin event for real-time updates
+            getEventService().emitAdminEvent(adminLogRepository.toActivityEntry(adminLog));
+
             return reply.send({ ok: true });
         } catch (error) {
             return sendError(reply, error);

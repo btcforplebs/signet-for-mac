@@ -100,6 +100,42 @@ export const formatFutureDate = (date: string): string => {
   return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
 };
 
+/**
+ * Format uptime in seconds to a human-readable string.
+ * Uses 2 significant units max, switches to months/years for long uptimes.
+ * e.g., "45s", "5h 30m", "3d 12h", "2mo 15d", "1y 3mo"
+ */
+export const formatUptime = (seconds: number): string => {
+    if (seconds < 60) return `${seconds}s`;
+
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m`;
+
+    const hours = Math.floor(seconds / 3600);
+    if (hours < 24) {
+        const mins = Math.floor((seconds % 3600) / 60);
+        return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+    }
+
+    const days = Math.floor(seconds / 86400);
+    if (days < 30) {
+        const hrs = Math.floor((seconds % 86400) / 3600);
+        return hrs > 0 ? `${days}d ${hrs}h` : `${days}d`;
+    }
+
+    // 30+ days: use months
+    const months = Math.floor(days / 30);
+    if (days < 365) {
+        const remainingDays = days % 30;
+        return remainingDays > 0 ? `${months}mo ${remainingDays}d` : `${months}mo`;
+    }
+
+    // 365+ days: use years
+    const years = Math.floor(days / 365);
+    const remainingMonths = Math.floor((days % 365) / 30);
+    return remainingMonths > 0 ? `${years}y ${remainingMonths}mo` : `${years}y`;
+};
+
 export const formatTtl = (seconds: number): string => {
   if (seconds <= 0) return 'Expired';
   if (seconds < 60) return `${seconds}s remaining`;

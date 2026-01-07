@@ -1,10 +1,65 @@
 # Changelog
 
-## [Unreleased]
+## [1.4.0]
+
+### Added
+- Admin activity logging: Track key lock/unlock, app suspend/resume, and daemon start events
+  - New "Admin" tab in Activity page to view admin-only events
+  - Admin events appear in Recent activity widget on Home page
+  - Admin events included in "All" filter on Activity page
+  - Events show source: "via Signet UI", "via Kill Switch", or "via Signet Android"
+- Kill switch command audit logging: All DM commands are now logged
+  - New `command_executed` event type records every command and its result
+  - Commands logged even when no state change occurs (e.g., locking already-locked key)
+  - Provides full audit trail for security review
+- Kill switch status command: Send `status` DM to check daemon state
+  - Returns active/locked keys, suspended apps count
+  - Logged as `status_checked` admin event
+- Web UI: System Status widget replaces Relays widget on dashboard
+  - Shows daemon uptime with health status label (Healthy/Degraded/Offline)
+  - HeartPulse icon color indicates status (green/yellow/red)
+  - Click opens System Status modal with full details:
+    - Status badge, uptime, memory usage, active listeners, connected clients, last pool reset, key stats
+    - Expandable relay section showing per-relay connection status
+- Android: System Status widget replaces Relays widget on dashboard (matches web UI)
+  - Shows daemon uptime with health status label (Healthy/Degraded/Offline)
+  - Heart icon color indicates status (green/yellow/red)
+  - Tap opens System Status sheet with full health details and expandable relay section
+- Android: X-Signet-Client header sent with all API requests for client identification
+
+### Improved
+- SSE real-time updates: Activity feeds now update instantly without API refresh
+  - `request:approved`, `request:denied`, and `request:auto_approved` events now include `activity` field
+  - Web UI Recent activity widget updates in real-time for all approval types
+  - Android Home screen Recent activity updates via SSE data (no API refresh needed)
+  - New `ping` event type for SSE heartbeat (fixes reconnection issues)
+- Daemon: Enhanced health monitoring
+  - Health status now logged every 30 minutes (was 1 hour)
+  - Event-triggered logging after pool reset and key lock/unlock
+  - Rich `/health` endpoint returns full JSON status for programmatic monitoring
+  - Response includes: uptime, memory, relay connections, key counts, subscriptions, SSE clients, last pool reset
+- Uptime display: More compact formatting with 2 significant units max
+  - Short uptimes: `45s`, `5m`, `2h 30m`, `3d 12h`
+  - Long uptimes switch to months/years: `2mo 15d`, `1y 3mo`
+  - Consistent across web UI and Android
+- Added KILLSWITCH.md to document new killswitch by DM feature
+
+### Fixed
+- Daemon: NIP-46 requests now work correctly after system suspend/resume
+  - RelayPool detects sleep/wake cycles (30s heartbeat, >90s gap triggers reset)
+  - SubscriptionManager has fallback detection (60s health check, >3min gap triggers reset)
+  - Two-layer detection ensures recovery even after very long sleep periods
+  - Pool reset creates fresh SimplePool and emits events for dependent services
+  - SubscriptionManager recreates NIP-46 subscriptions on pool reset
+  - AdminCommandService (kill switch) refreshes its WebSocket connections on wake
+- Docker: Custom SIGNET_PORT now works correctly (#27)
+  - Fixed port mapping to use dynamic port on both sides
+  - Fixed healthcheck to use configured port
+  - Fixed DAEMON_URL to use configured port for UI→daemon communication
 
 ---
 
-## [1.3.0] - 2026-01-05
+## [1.3.0]
 
 ### Security
 - Bunker URIs now use one-time connection tokens instead of persistent secrets

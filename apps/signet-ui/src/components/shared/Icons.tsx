@@ -25,8 +25,14 @@ import {
   ShieldCheck,
   ShieldAlert,
   Clock,
+  Pause,
+  Play,
+  Server,
+  Eye,
+  Terminal,
   type LucideProps,
 } from 'lucide-react';
+import type { AdminEventType } from '@signet/types';
 
 // Re-export icons with semantic names for the application
 export {
@@ -109,5 +115,49 @@ export function getActivityIcon(type: string): React.ComponentType<LucideProps> 
       return PlusCircle;
     default:
       return FileText;
+  }
+}
+
+// Admin event type to icon component mapping
+export function getAdminEventIcon(eventType: AdminEventType): React.ComponentType<LucideProps> {
+  switch (eventType) {
+    case 'key_locked':
+      return Lock;
+    case 'key_unlocked':
+      return Unlock;
+    case 'app_suspended':
+      return Pause;
+    case 'app_unsuspended':
+      return Play;
+    case 'daemon_started':
+      return Server;
+    case 'status_checked':
+      return Eye;
+    case 'command_executed':
+      return Terminal;
+    default:
+      return FileText;
+  }
+}
+
+// Admin event type to human-readable label
+export function getAdminEventLabel(eventType: AdminEventType): string {
+  switch (eventType) {
+    case 'key_locked':
+      return 'Key locked';
+    case 'key_unlocked':
+      return 'Key unlocked';
+    case 'app_suspended':
+      return 'App suspended';
+    case 'app_unsuspended':
+      return 'App resumed';
+    case 'daemon_started':
+      return 'Daemon started';
+    case 'status_checked':
+      return 'Status checked';
+    case 'command_executed':
+      return 'Command executed';
+    default:
+      return eventType;
   }
 }

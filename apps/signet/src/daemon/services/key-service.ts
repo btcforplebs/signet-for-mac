@@ -66,6 +66,30 @@ export class KeyService {
     }
 
     /**
+     * Get counts of keys by status (for health monitoring).
+     * Fast synchronous method using in-memory state.
+     */
+    getKeyStats(): { active: number; locked: number; offline: number } {
+        let active = 0;
+        let locked = 0;
+        let offline = 0;
+
+        for (const [name, entry] of Object.entries(this.config.allKeys)) {
+            if (this.activeKeys[name]) {
+                active++;
+            } else if (entry?.iv && entry?.data) {
+                // Encrypted but not active = locked
+                locked++;
+            } else {
+                // Not encrypted and not active = offline (plain key not loaded)
+                offline++;
+            }
+        }
+
+        return { active, locked, offline };
+    }
+
+    /**
      * Lock an active key, removing it from memory.
      * The key remains encrypted on disk; all apps and permissions are preserved.
      */
@@ -94,6 +118,39 @@ export class KeyService {
 
         // Emit event for real-time updates
         getEventService().emitKeyLocked(keyName);
+    }
+
+    /**
+     * Lock all active encrypted keys.
+     * Used by the kill switch to quickly disable all signing capability.
+     * Returns the names of keys that were locked.
+     */
+    lockAllKeys(): string[] {
+        const lockedKeys: string[] = [];
+
+        for (const keyName of Object.keys(this.activeKeys)) {
+            const record = this.config.allKeys[keyName];
+
+            // Only lock encrypted keys (unencrypted keys would auto-unlock on restart)
+            if (!record?.iv || !record?.data) {
+                continue;
+            }
+
+            // Remove from memory
+            delete this.activeKeys[keyName];
+
+            // Notify to stop the backend
+            if (this.config.onKeyLocked) {
+                this.config.onKeyLocked(keyName);
+            }
+
+            // Emit event for real-time updates
+            getEventService().emitKeyLocked(keyName);
+
+            lockedKeys.push(keyName);
+        }
+
+        return lockedKeys;
     }
 
     async createKey(options: {

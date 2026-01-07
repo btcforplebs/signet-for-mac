@@ -5,16 +5,17 @@ import type { Event } from 'nostr-tools/pure';
 const debug = createDebug('signet:subscription-manager');
 
 // How often to run the health check loop
-const HEARTBEAT_INTERVAL_MS = 60 * 1000; // 60 seconds
-
-// If elapsed time between checks exceeds this, we assume system slept
-const SLEEP_DETECTION_THRESHOLD_MS = HEARTBEAT_INTERVAL_MS * 3; // 3x expected interval
+const HEALTH_CHECK_INTERVAL_MS = 60 * 1000; // 60 seconds
 
 // How long to wait for a ping response before considering connection dead
 const PING_TIMEOUT_MS = 10 * 1000; // 10 seconds
 
 // Debounce subscription restarts to avoid rapid-fire restarts
 const RESTART_DEBOUNCE_MS = 2000; // 2 seconds
+
+// Fallback sleep detection: if health check interval exceeds this, assume system slept
+// This is a backup in case RelayPool's heartbeat doesn't fire after long sleep
+const SLEEP_DETECTION_THRESHOLD_MS = HEALTH_CHECK_INTERVAL_MS * 3; // 3 minutes
 
 export interface ManagedSubscription {
     id: string;
@@ -25,13 +26,11 @@ export interface ManagedSubscription {
 
 export interface SubscriptionManagerConfig {
     pool: RelayPool;
-    heartbeatInterval?: number;
-    sleepThreshold?: number;
+    healthCheckInterval?: number;
     pingTimeout?: number;
 }
 
 type SubscriptionManagerEventType =
-    | 'sleep-detected'
     | 'subscription-restarted'
     | 'health-check-failed'
     | 'health-check-passed';
@@ -39,33 +38,35 @@ type SubscriptionManagerEventType =
 type SubscriptionManagerListener = (event: { type: SubscriptionManagerEventType; data?: any }) => void;
 
 /**
- * Manages subscription lifecycle with automatic reconnection after sleep/wake.
+ * Manages subscription lifecycle with automatic reconnection.
  *
  * Features:
- * - Time jump detection for sleep/wake cycles
+ * - Listens for pool-reset events and recreates subscriptions
  * - Periodic ping-based health checks
  * - Automatic subscription restart on failure
  * - Debounced restarts to avoid rapid-fire reconnections
+ *
+ * Note: Sleep/wake detection is handled by RelayPool, which emits 'pool-reset'
+ * events when the system wakes from sleep.
  */
 export class SubscriptionManager {
     private readonly pool: RelayPool;
-    private readonly heartbeatInterval: number;
-    private readonly sleepThreshold: number;
+    private readonly healthCheckInterval: number;
     private readonly pingTimeout: number;
 
     private readonly subscriptions: Map<string, ManagedSubscription> = new Map();
     private readonly listeners: Set<SubscriptionManagerListener> = new Set();
 
-    private heartbeatTimer?: NodeJS.Timeout;
-    private lastHeartbeat: number = Date.now();
+    private healthCheckTimer?: NodeJS.Timeout;
     private isRunning = false;
     private restartDebounceTimer?: NodeJS.Timeout;
     private pendingRestart = false;
+    private poolListenerCleanup?: () => void;
+    private lastHealthCheck: number = 0;
 
     constructor(config: SubscriptionManagerConfig) {
         this.pool = config.pool;
-        this.heartbeatInterval = config.heartbeatInterval ?? HEARTBEAT_INTERVAL_MS;
-        this.sleepThreshold = config.sleepThreshold ?? SLEEP_DETECTION_THRESHOLD_MS;
+        this.healthCheckInterval = config.healthCheckInterval ?? HEALTH_CHECK_INTERVAL_MS;
         this.pingTimeout = config.pingTimeout ?? PING_TIMEOUT_MS;
     }
 
@@ -79,14 +80,23 @@ export class SubscriptionManager {
         }
 
         this.isRunning = true;
-        this.lastHeartbeat = Date.now();
+        this.lastHealthCheck = Date.now();
 
-        this.heartbeatTimer = setInterval(() => {
-            this.runHeartbeat();
-        }, this.heartbeatInterval);
+        // Listen for pool-reset events to recreate subscriptions
+        this.poolListenerCleanup = this.pool.on((event) => {
+            if (event.type === 'pool-reset') {
+                debug('received pool-reset event, scheduling subscription restart');
+                this.scheduleRestart('pool-reset');
+            }
+        });
 
-        debug('started with %dms heartbeat interval', this.heartbeatInterval);
-        console.log(`Subscription health monitoring started (checking every ${this.heartbeatInterval / 1000}s)`);
+        // Start periodic health checks
+        this.healthCheckTimer = setInterval(() => {
+            this.runHealthCheck();
+        }, this.healthCheckInterval);
+
+        debug('started with %dms health check interval', this.healthCheckInterval);
+        console.log(`Subscription health monitoring started (checking every ${this.healthCheckInterval / 1000}s)`);
 
         // Run initial health check after a short delay to allow subscriptions to connect
         setTimeout(() => {
@@ -107,9 +117,13 @@ export class SubscriptionManager {
 
         this.isRunning = false;
 
-        if (this.heartbeatTimer) {
-            clearInterval(this.heartbeatTimer);
-            this.heartbeatTimer = undefined;
+        // Clean up pool listener
+        this.poolListenerCleanup?.();
+        this.poolListenerCleanup = undefined;
+
+        if (this.healthCheckTimer) {
+            clearInterval(this.healthCheckTimer);
+            this.healthCheckTimer = undefined;
         }
 
         if (this.restartDebounceTimer) {
@@ -186,34 +200,27 @@ export class SubscriptionManager {
     }
 
     /**
-     * Run the heartbeat check.
+     * Run a ping-based health check by querying for events.
+     * If we don't get an EOSE within the timeout, assume connection is dead.
+     * Also includes fallback sleep detection in case RelayPool's heartbeat didn't fire.
      */
-    private runHeartbeat(): void {
+    private async runHealthCheck(): Promise<void> {
         const now = Date.now();
-        const elapsed = now - this.lastHeartbeat;
-        this.lastHeartbeat = now;
+        const elapsed = now - this.lastHealthCheck;
+        this.lastHealthCheck = now;
 
-        debug('heartbeat: %dms elapsed (expected ~%dms)', elapsed, this.heartbeatInterval);
-
-        // Check for time jump (sleep/wake detection)
-        if (elapsed > this.sleepThreshold) {
-            const sleepDuration = Math.round((elapsed - this.heartbeatInterval) / 1000);
-            console.log(`System wake detected (slept ~${sleepDuration}s), scheduling subscription refresh`);
-            this.emit({ type: 'sleep-detected', data: { sleepDuration } });
-            this.scheduleRestart('sleep-wake');
+        // Fallback sleep detection: if too much time passed since last check, assume system slept
+        // This catches cases where RelayPool's heartbeat didn't fire after long sleep
+        if (elapsed > SLEEP_DETECTION_THRESHOLD_MS) {
+            const sleepDuration = Math.round((elapsed - this.healthCheckInterval) / 1000);
+            console.log(`System wake detected via health check (slept ~${sleepDuration}s), resetting pool`);
+            this.pool.resetPool();
+            // Pool reset will emit 'pool-reset' event, which triggers subscription restart
+            // No need to continue with ping check - subscriptions will be recreated
             return;
         }
 
-        // Run ping-based health check
         console.log(`Running relay health check (${this.subscriptions.size} subscriptions)...`);
-        this.runHealthCheck();
-    }
-
-    /**
-     * Run a ping-based health check by querying for events.
-     * If we don't get an EOSE within the timeout, assume connection is dead.
-     */
-    private async runHealthCheck(): Promise<void> {
         if (this.subscriptions.size === 0) {
             debug('no subscriptions to health check');
             return;

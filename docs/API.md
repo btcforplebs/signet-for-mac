@@ -18,6 +18,7 @@ Most endpoints require JWT authentication. The token is stored in an HTTP-only c
 |--------|----------|-------------|
 | `Authorization` | Optional | Bearer token (alternative to cookie) |
 | `X-CSRF-Token` | For mutations | CSRF token for POST/PATCH/DELETE requests (not required when using Bearer auth) |
+| `X-Signet-Client` | Optional | Client identification in format `name/version` (e.g., `Signet Android/1.4.0`). Used for admin activity logging. |
 
 ### Getting a CSRF Token
 
@@ -43,14 +44,52 @@ curl -b cookies.txt -H "X-CSRF-Token: <token>" -X POST ...
 
 #### `GET /health`
 
-Health check endpoint. No authentication required.
+Health check endpoint. No authentication required. Returns full daemon status for programmatic monitoring.
 
 **Response:**
 ```json
 {
-  "status": "ok"
+  "status": "ok",
+  "uptime": 3600,
+  "memory": {
+    "heapMB": 45.2,
+    "rssMB": 89.7
+  },
+  "relays": {
+    "connected": 4,
+    "total": 5
+  },
+  "keys": {
+    "active": 2,
+    "locked": 1,
+    "offline": 0
+  },
+  "subscriptions": 3,
+  "sseClients": 1,
+  "lastPoolReset": "2026-01-07T10:30:00.000Z"
 }
 ```
+
+**Response Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `status` | string | `ok` if at least one relay connected, `degraded` otherwise |
+| `uptime` | number | Daemon uptime in seconds |
+| `memory.heapMB` | number | V8 heap memory usage in MB |
+| `memory.rssMB` | number | Resident set size memory in MB |
+| `relays.connected` | number | Number of connected relays |
+| `relays.total` | number | Total configured relays |
+| `keys.active` | number | Unlocked keys ready for signing |
+| `keys.locked` | number | Encrypted keys requiring passphrase |
+| `keys.offline` | number | Unencrypted keys not loaded |
+| `subscriptions` | number | Active NIP-46 subscriptions |
+| `sseClients` | number | Connected SSE clients (web UI, Android app) |
+| `lastPoolReset` | string \| null | ISO 8601 timestamp of last relay pool reset, or null if never reset |
+
+**Notes:**
+- `lastPoolReset` is set after system suspend/resume recovery or watchdog-triggered resets
+- A `degraded` status indicates no relays are connected; NIP-46 requests will fail until connectivity is restored
 
 ---
 
@@ -133,9 +172,21 @@ List authorization requests.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `status` | string | `all` | Filter by status: `all`, `approved`, `denied`, `expired` |
+| `status` | string | `pending` | Filter by status: `pending`, `all`, `approved`, `denied`, `expired`, `admin` |
 | `limit` | number | 10 | Max results (1-50) |
 | `offset` | number | 0 | Pagination offset |
+| `excludeAdmin` | boolean | `false` | When `status=all`, exclude admin events (return only NIP-46 requests) |
+
+**Status Filter Values:**
+
+| Value | Description |
+|-------|-------------|
+| `pending` | Requests awaiting approval (default) |
+| `all` | All processed requests (approved, denied, expired) plus admin events |
+| `approved` | Approved requests only |
+| `denied` | Denied requests only |
+| `expired` | Expired requests only |
+| `admin` | Admin activity only (key lock/unlock, app suspend/resume, daemon start) |
 
 **Response:**
 ```json
@@ -718,8 +769,8 @@ eventSource.onmessage = (event) => {
 |------|-------------|---------|
 | `connected` | Initial connection established | `{}` |
 | `request:created` | New authorization request | `{ request: PendingRequest }` |
-| `request:approved` | Request was approved | `{ requestId: string }` |
-| `request:denied` | Request was denied | `{ requestId: string }` |
+| `request:approved` | Request was approved | `{ requestId: string, activity: ActivityEntry }` |
+| `request:denied` | Request was denied | `{ requestId: string, activity: ActivityEntry }` |
 | `request:expired` | Request expired | `{ requestId: string }` |
 | `request:auto_approved` | Request auto-approved via trust level | `{ activity: ActivityEntry }` |
 | `app:connected` | New app connected | `{ app: ConnectedApp }` |
@@ -733,7 +784,39 @@ eventSource.onmessage = (event) => {
 | `key:updated` | Key encryption status changed | `{ keyName: string }` |
 | `stats:updated` | Dashboard stats changed | `{ stats: DashboardStats }` |
 | `relays:updated` | Relay connection status changed | `{ relays: RelayStatusResponse }` |
-| `ping` | Keep-alive (every 15s) | n/a (comment line) |
+| `ping` | Keep-alive (every 30s) | n/a (comment line) |
+| `admin:event` | Admin action performed | `{ activity: AdminActivityEntry }` |
+
+**Admin Event Types:**
+
+The `admin:event` payload contains an `AdminActivityEntry` with these fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | number | Unique log entry ID |
+| `timestamp` | string | ISO 8601 timestamp |
+| `category` | string | Always `"admin"` |
+| `eventType` | string | Admin event type (see table below) |
+| `keyName` | string \| undefined | Key name (for key events) |
+| `appId` | number \| undefined | App ID (for app events) |
+| `appName` | string \| undefined | App name (for app events) |
+| `clientName` | string \| undefined | Client that performed the action (e.g., `"Signet UI"`, `"Signet Android"`, `"kill-switch"`) |
+| `clientVersion` | string \| undefined | Client version (e.g., `"1.4.0"`) |
+| `ipAddress` | string \| undefined | Client IP address |
+| `command` | string \| undefined | Kill switch command text (for `command_executed`) |
+| `commandResult` | string \| undefined | Kill switch command result (for `command_executed`) |
+
+**Admin Event Type Values:**
+
+| Value | Description |
+|-------|-------------|
+| `key_locked` | Key was locked via UI or kill switch |
+| `key_unlocked` | Key was unlocked |
+| `app_suspended` | App was suspended |
+| `app_unsuspended` | App was resumed |
+| `daemon_started` | Daemon process started |
+| `status_checked` | Kill switch `status` command was executed |
+| `command_executed` | Kill switch command was executed (includes `command` and `commandResult` fields) |
 
 ---
 

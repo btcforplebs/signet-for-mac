@@ -98,7 +98,7 @@ export function SettingsPanel({
             <strong>Signet</strong> is a NIP-46 remote signer for Nostr.
           </p>
           <p className={styles.version}>
-            Version 1.0.0-beta
+            Version {__APP_VERSION__}
           </p>
           <p>
             <a

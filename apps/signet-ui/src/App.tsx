@@ -21,6 +21,7 @@ import { useKeys } from './hooks/useKeys.js';
 import { useApps } from './hooks/useApps.js';
 import { useDashboard } from './hooks/useDashboard.js';
 import { useRelays } from './hooks/useRelays.js';
+import { useHealth } from './hooks/useHealth.js';
 import './design-system.css';
 import './styles.css';
 
@@ -47,6 +48,7 @@ function AppContent() {
   const apps = useApps();
   const dashboard = useDashboard();
   const relays = useRelays();
+  const health = useHealth();
 
   // Load connection info
   useEffect(() => {
@@ -164,6 +166,8 @@ function AppContent() {
             stats={dashboard.stats}
             activity={dashboard.activity}
             loading={requests.loading || dashboard.loading}
+            health={health.health}
+            uiStatus={health.uiStatus}
             relayStatus={relays.relays}
             passwords={requests.passwords}
             appNames={appNames}

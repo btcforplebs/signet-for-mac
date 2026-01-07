@@ -41,8 +41,9 @@ export interface PendingRequestWire extends Omit<PendingRequest, 'requiresPasswo
 
 /**
  * Filter for listing requests by status
+ * 'admin' filter returns admin activity events (key locks, app suspends, etc.)
  */
-export type RequestFilter = 'all' | 'pending' | 'approved' | 'denied' | 'expired';
+export type RequestFilter = 'all' | 'pending' | 'approved' | 'denied' | 'expired' | 'admin';
 
 /**
  * Display-ready request with computed fields

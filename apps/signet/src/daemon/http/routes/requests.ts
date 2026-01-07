@@ -1,11 +1,13 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { RequestService, AppService } from '../../services/index.js';
 import { emitCurrentStats } from '../../services/index.js';
-import type { TrustLevel } from '@signet/types';
+import type { TrustLevel, ActivityEntry } from '@signet/types';
 import type { PreHandlerFull } from '../types.js';
 import prisma from '../../../db.js';
 import { grantPermissionsByTrustLevel, permitAllRequests, type AllowScope } from '../../lib/acl.js';
 import { getEventService } from '../../services/event-service.js';
+import { adminLogRepository } from '../../repositories/admin-log-repository.js';
+import { extractEventKind } from '../../repositories/log-repository.js';
 import {
     authorizeRequestWebHandler,
     processRequestWebHandler,
@@ -52,6 +54,45 @@ export function registerRequestRoutes(
 
         const status = query.status || 'pending';
 
+        // Handle admin filter specially - return admin activity logs only
+        if (status === 'admin') {
+            const adminLogs = await adminLogRepository.findAll({ limit, offset });
+            const activity = adminLogs.map(log => adminLogRepository.toActivityEntry(log));
+            return reply.send({ requests: activity });
+        }
+
+        // For 'all' filter, include both NIP-46 requests and admin events (unless excludeAdmin=true)
+        if (status === 'all') {
+            const excludeAdmin = query.excludeAdmin === 'true';
+
+            if (excludeAdmin) {
+                // Return only NIP-46 requests (for clients that handle admin separately)
+                const requests = await config.requestService.listRequests({ status, limit, offset });
+                return reply.send({ requests });
+            }
+
+            // Fetch both types
+            const [requests, adminLogs] = await Promise.all([
+                config.requestService.listRequests({ status, limit, offset }),
+                adminLogRepository.findAll({ limit, offset }),
+            ]);
+
+            // Convert admin logs to activity entries
+            const adminActivity = adminLogs.map(log => adminLogRepository.toActivityEntry(log));
+
+            // Merge and sort by timestamp (newest first)
+            const merged = [...requests, ...adminActivity].sort((a, b) => {
+                const timeA = new Date('createdAt' in a ? a.createdAt : a.timestamp).getTime();
+                const timeB = new Date('createdAt' in b ? b.createdAt : b.timestamp).getTime();
+                return timeB - timeA;
+            });
+
+            // Apply limit after merge
+            const limited = merged.slice(0, limit);
+
+            return reply.send({ requests: limited });
+        }
+
         const requests = await config.requestService.listRequests({ status, limit, offset });
         return reply.send({ requests });
     });
@@ -87,8 +128,9 @@ export function registerRequestRoutes(
         });
 
         // Log the denial (no KeyUser created for denied apps)
+        let logId = 0;
         if (record.keyName) {
-            await prisma.log.create({
+            const log = await prisma.log.create({
                 data: {
                     timestamp: new Date(),
                     type: 'denial',
@@ -98,9 +140,23 @@ export function registerRequestRoutes(
                     remotePubkey: record.remotePubkey,
                 },
             });
+            logId = log.id;
         }
 
-        getEventService().emitRequestDenied(id);
+        // Build activity entry for SSE
+        const activity: ActivityEntry = {
+            id: logId,
+            timestamp: new Date().toISOString(),
+            type: 'denial',
+            method: record.method ?? undefined,
+            eventKind: record.method === 'sign_event' ? extractEventKind(record.params) : undefined,
+            keyName: record.keyName ?? undefined,
+            userPubkey: record.remotePubkey ?? undefined,
+            autoApproved: false,
+            approvalType: undefined,
+        };
+
+        getEventService().emitRequestDenied(id, activity);
 
         // Emit stats update (pending count changed)
         await emitCurrentStats();
@@ -143,17 +199,15 @@ export function registerRequestRoutes(
                 }
 
                 // Approve the request
+                const processedAt = new Date();
                 await prisma.request.update({
                     where: { id: record.id },
                     data: {
                         allowed: true,
-                        processedAt: new Date(),
+                        processedAt,
                         approvalType: 'manual',
                     },
                 });
-
-                // Emit approval event
-                eventService.emitRequestApproved(record.id);
 
                 // Grant permissions based on request type (only if keyName is present)
                 if (record.keyName) {
@@ -180,6 +234,8 @@ export function registerRequestRoutes(
                 }
 
                 // Log the approval - always create KeyUser if needed
+                let logId = 0;
+                let appName: string | undefined;
                 if (record.keyName && record.remotePubkey) {
                     const keyUser = await prisma.keyUser.upsert({
                         where: {
@@ -195,8 +251,9 @@ export function registerRequestRoutes(
                             // trustLevel defaults to "reasonable" in schema
                         },
                     });
+                    appName = keyUser.description ?? undefined;
 
-                    await prisma.log.create({
+                    const log = await prisma.log.create({
                         data: {
                             timestamp: new Date(),
                             type: 'approval',
@@ -206,7 +263,25 @@ export function registerRequestRoutes(
                             approvalType: 'manual',
                         },
                     });
+                    logId = log.id;
                 }
+
+                // Build activity entry for SSE
+                const activity: ActivityEntry = {
+                    id: logId,
+                    timestamp: processedAt.toISOString(),
+                    type: 'approval',
+                    method: record.method ?? undefined,
+                    eventKind: record.method === 'sign_event' ? extractEventKind(record.params) : undefined,
+                    keyName: record.keyName ?? undefined,
+                    userPubkey: record.remotePubkey ?? undefined,
+                    appName,
+                    autoApproved: false,
+                    approvalType: 'manual',
+                };
+
+                // Emit approval event
+                eventService.emitRequestApproved(record.id, activity);
 
                 results.push({ id, success: true });
             } catch (error) {

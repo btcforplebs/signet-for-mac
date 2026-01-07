@@ -1,10 +1,13 @@
 package tech.geektoshi.signet.data.api
 
+import tech.geektoshi.signet.data.model.AdminActivityEntry
+import tech.geektoshi.signet.data.model.AdminActivityResponse
 import tech.geektoshi.signet.data.model.ApproveRequestBody
 import tech.geektoshi.signet.data.model.AppsResponse
 import tech.geektoshi.signet.data.model.ConnectionTokenResponse
 import tech.geektoshi.signet.data.model.SuspendAppBody
 import tech.geektoshi.signet.data.model.DashboardResponse
+import tech.geektoshi.signet.data.model.HealthStatus
 import tech.geektoshi.signet.data.model.KeysResponse
 import tech.geektoshi.signet.data.model.OperationResponse
 import tech.geektoshi.signet.data.model.RelaysResponse
@@ -20,11 +23,13 @@ import io.ktor.client.request.get
 import io.ktor.client.request.parameter
 import io.ktor.client.request.patch
 import io.ktor.client.request.post
+import io.ktor.client.request.header
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
+import tech.geektoshi.signet.BuildConfig
 
 class SignetApiClient(
     private val baseUrl: String
@@ -42,6 +47,8 @@ class SignetApiClient(
             contentType(ContentType.Application.Json)
             // Bearer auth skips CSRF checks (token value doesn't matter when requireAuth=false)
             bearerAuth("android-client")
+            // Identify client for admin activity logging
+            header("X-Signet-Client", "Signet Android/${BuildConfig.VERSION_NAME}")
         }
     }
 
@@ -54,16 +61,21 @@ class SignetApiClient(
 
     /**
      * Get list of requests
+     * @param excludeAdmin When true with status="all", excludes admin events from response
      */
     suspend fun getRequests(
         status: String = "pending",
         limit: Int = 50,
-        offset: Int = 0
+        offset: Int = 0,
+        excludeAdmin: Boolean = false
     ): RequestsResponse {
         return client.get("/requests") {
             parameter("status", status)
             parameter("limit", limit)
             parameter("offset", offset)
+            if (excludeAdmin) {
+                parameter("excludeAdmin", "true")
+            }
         }.body()
     }
 
@@ -220,6 +232,27 @@ class SignetApiClient(
      */
     suspend fun getRelays(): RelaysResponse {
         return client.get("/relays").body()
+    }
+
+    /**
+     * Get full health status from daemon
+     */
+    suspend fun getHealth(): HealthStatus {
+        return client.get("/health").body()
+    }
+
+    /**
+     * Get admin activity (key lock/unlock, app suspend/resume, daemon start events)
+     */
+    suspend fun getAdminActivity(
+        limit: Int = 50,
+        offset: Int = 0
+    ): List<AdminActivityEntry> {
+        return client.get("/requests") {
+            parameter("status", "admin")
+            parameter("limit", limit)
+            parameter("offset", offset)
+        }.body<AdminActivityResponse>().requests
     }
 
     /**

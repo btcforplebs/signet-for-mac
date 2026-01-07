@@ -52,14 +52,15 @@ export function registerEventsRoutes(
         const unsubscribe = config.eventService.subscribe(eventCallback);
         debug('SSE client subscribed, total subscribers: %d', config.eventService.getSubscriberCount());
 
-        // Keep-alive ping every 15 seconds (shorter interval for better proxy compatibility)
+        // Keep-alive ping every 30 seconds
+        // Send as actual data event so browser's onmessage fires and frontend heartbeat tracking works
         const keepAliveInterval = setInterval(() => {
             try {
-                reply.raw.write(': keep-alive\n\n');
+                reply.raw.write(`data: ${JSON.stringify({ type: 'ping' })}\n\n`);
             } catch (error) {
                 // Connection may be closed
             }
-        }, 15000);
+        }, 30000);
 
         // Cleanup function to ensure resources are freed
         let cleanedUp = false;

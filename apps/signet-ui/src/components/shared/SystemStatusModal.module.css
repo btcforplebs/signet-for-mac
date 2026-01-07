@@ -1,0 +1,253 @@
+/* System Status Modal */
+.backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-modal);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(4px);
+    animation: fadeIn 150ms ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.modal {
+    width: 100%;
+    max-width: 420px;
+    margin: var(--space-4);
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-xl);
+    animation: slideIn 150ms ease;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-4);
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.title {
+    font-size: var(--text-base);
+    font-weight: var(--font-semibold);
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.closeButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.closeButton:hover {
+    background: var(--surface-hover);
+    color: var(--text-primary);
+}
+
+.content {
+    padding: var(--space-4);
+}
+
+/* Status Badge */
+.statusBadge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-full);
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    margin-bottom: var(--space-4);
+}
+
+.statusDot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.status_healthy {
+    background: var(--success-muted);
+    color: var(--success);
+}
+
+.status_healthy .statusDot {
+    background: var(--success);
+}
+
+.status_degraded {
+    background: var(--warning-muted);
+    color: var(--warning);
+}
+
+.status_degraded .statusDot {
+    background: var(--warning);
+}
+
+.status_offline {
+    background: var(--danger-muted);
+    color: var(--danger);
+}
+
+.status_offline .statusDot {
+    background: var(--danger);
+}
+
+/* Stats Grid */
+.statsGrid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
+}
+
+.statItem {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.statLabel {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+}
+
+.statValue {
+    font-size: var(--text-sm);
+    color: var(--text-primary);
+    font-weight: var(--font-medium);
+}
+
+/* Relay Section */
+.relayHeader {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-3);
+    background: var(--surface-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.relayHeader:hover {
+    background: var(--surface-hover);
+    color: var(--text-primary);
+}
+
+.relayHeaderText {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.relayList {
+    margin-top: var(--space-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.relayItem {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.relayItem:last-child {
+    border-bottom: none;
+}
+
+.relayInfo {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+}
+
+.relayUrl {
+    font-size: var(--text-sm);
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.relayTime {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+}
+
+.relayStatus {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.connected {
+    color: var(--success);
+}
+
+.disconnected {
+    color: var(--danger);
+}
+
+.offlineMessage {
+    padding: var(--space-4);
+    text-align: center;
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+}
+
+@media (pointer: coarse) {
+    .closeButton {
+        width: 44px;
+        height: 44px;
+    }
+
+    .relayItem {
+        min-height: 56px;
+    }
+
+    .relayHeader {
+        min-height: 48px;
+    }
+}

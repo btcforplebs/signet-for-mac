@@ -130,3 +130,21 @@ export class LogRepository {
 }
 
 export const logRepository = new LogRepository();
+
+/**
+ * Extract event kind from params string (for sign_event method)
+ */
+export function extractEventKind(params: string | null): number | undefined {
+    if (!params) return undefined;
+    try {
+        const parsed = JSON.parse(params);
+        // params could be [event] array or just event object
+        const event = Array.isArray(parsed) ? parsed[0] : parsed;
+        if (typeof event?.kind === 'number') {
+            return event.kind;
+        }
+    } catch {
+        // Ignore parse errors
+    }
+    return undefined;
+}

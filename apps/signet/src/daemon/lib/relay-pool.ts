@@ -24,6 +24,13 @@ interface ActiveSubscription {
 const WATCHDOG_FAILURE_THRESHOLD = 3;
 const WATCHDOG_RESET_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes between resets
 
+// Sleep/wake detection
+const HEARTBEAT_INTERVAL_MS = 30 * 1000; // 30 seconds
+const SLEEP_DETECTION_THRESHOLD_MS = HEARTBEAT_INTERVAL_MS * 3; // 90 seconds = likely slept
+
+export type RelayPoolEventType = 'pool-reset' | 'status-change' | 'sleep-detected';
+export type RelayPoolListener = (event: { type: RelayPoolEventType; data?: any }) => void;
+
 /**
  * Thin wrapper around nostr-tools SimplePool.
  * Provides connection status tracking and simplified subscription management.
@@ -36,7 +43,15 @@ export class RelayPool {
     private consecutiveFailures = 0;
     private lastReset: number = 0;
 
-    // Callbacks for external monitoring
+    // Sleep/wake detection
+    private heartbeatTimer?: NodeJS.Timeout;
+    private lastHeartbeat: number = 0;
+    private isMonitoring = false;
+
+    // Event listeners
+    private readonly listeners: Set<RelayPoolListener> = new Set();
+
+    // Callbacks for external monitoring (legacy, kept for compatibility)
     private onPublishSuccess?: (event: Event, relay: string) => void;
     private onPublishFailure?: (event: Event, relay: string, error: Error) => void;
     private onStatusChange?: () => void;
@@ -57,6 +72,85 @@ export class RelayPool {
         }
 
         debug('RelayPool created with %d relays', relays.length);
+    }
+
+    /**
+     * Start monitoring for sleep/wake cycles.
+     * Should be called after subscriptions are set up.
+     */
+    public startMonitoring(): void {
+        if (this.isMonitoring) {
+            debug('already monitoring, ignoring startMonitoring()');
+            return;
+        }
+
+        this.isMonitoring = true;
+        this.lastHeartbeat = Date.now();
+
+        this.heartbeatTimer = setInterval(() => {
+            this.runHeartbeat();
+        }, HEARTBEAT_INTERVAL_MS);
+
+        debug('sleep/wake monitoring started with %dms heartbeat', HEARTBEAT_INTERVAL_MS);
+    }
+
+    /**
+     * Stop monitoring for sleep/wake cycles.
+     */
+    public stopMonitoring(): void {
+        if (!this.isMonitoring) {
+            return;
+        }
+
+        this.isMonitoring = false;
+        if (this.heartbeatTimer) {
+            clearInterval(this.heartbeatTimer);
+            this.heartbeatTimer = undefined;
+        }
+
+        debug('sleep/wake monitoring stopped');
+    }
+
+    /**
+     * Add an event listener for pool events.
+     */
+    public on(listener: RelayPoolListener): () => void {
+        this.listeners.add(listener);
+        return () => this.listeners.delete(listener);
+    }
+
+    /**
+     * Emit an event to all listeners.
+     */
+    private emit(event: { type: RelayPoolEventType; data?: any }): void {
+        for (const listener of this.listeners) {
+            try {
+                listener(event);
+            } catch (error) {
+                debug('listener error: %s', (error as Error).message);
+            }
+        }
+    }
+
+    /**
+     * Run heartbeat check for sleep/wake detection.
+     */
+    private runHeartbeat(): void {
+        const now = Date.now();
+        const elapsed = now - this.lastHeartbeat;
+        this.lastHeartbeat = now;
+
+        debug('heartbeat: %dms elapsed (expected ~%dms)', elapsed, HEARTBEAT_INTERVAL_MS);
+
+        // Check for time jump (sleep/wake detection)
+        if (elapsed > SLEEP_DETECTION_THRESHOLD_MS) {
+            const sleepDuration = Math.round((elapsed - HEARTBEAT_INTERVAL_MS) / 1000);
+            console.log(`System wake detected (slept ~${sleepDuration}s), resetting relay pool`);
+            this.emit({ type: 'sleep-detected', data: { sleepDuration } });
+
+            // Reset the pool to clear stale connections
+            this.resetPool();
+        }
     }
 
     /**
@@ -224,6 +318,9 @@ export class RelayPool {
     public close(): void {
         debug('closing relay pool');
 
+        // Stop monitoring
+        this.stopMonitoring();
+
         for (const [id, sub] of this.subscriptions) {
             debug('closing subscription %s', id);
             sub.close();
@@ -280,6 +377,7 @@ export class RelayPool {
     /**
      * Force reset the underlying SimplePool. Closes all connections and creates a fresh pool.
      * Use this when the pool appears to be in a corrupted state.
+     * Emits 'pool-reset' event so listeners can recreate subscriptions.
      */
     public resetPool(): void {
         console.log('=== POOL RESET ===');
@@ -310,9 +408,11 @@ export class RelayPool {
             });
         }
 
-        console.log('Pool reset complete. Subscriptions will be recreated by SubscriptionManager.');
+        console.log('Pool reset complete. Subscriptions will be recreated.');
         console.log('==================');
 
+        // Emit pool-reset event so SubscriptionManager can recreate subscriptions
+        this.emit({ type: 'pool-reset' });
         this.onStatusChange?.();
     }
 

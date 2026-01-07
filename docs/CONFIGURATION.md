@@ -1,8 +1,6 @@
 # Signet Configuration
 
-All runtime settings live in `signet.json`, located at `~/.signet-config/signet.json` by default. You can override this with `--config /path/to/signet.json`.
-
-On first boot, Signet auto-generates this file with secure defaults (including all required secrets). You only need to edit it to customize relays, CORS origins, or other settings.
+All runtime settings live in `signet.json`, located at `~/.signet-config/signet.json` by default. You can override this with `--config /path/to/signet.json`. On first boot, Signet auto-generates this file with secure defaults (including all required secrets). You only need to edit it to customize relays, CORS origins, or other settings.
 
 ## Example
 
@@ -62,6 +60,24 @@ All administration is done via the web UI. The following settings are required:
 
 - `baseUrl`: public URL where the daemon is reachable (required for request approval flow).
 - `authPort` / `authHost`: local interface for the Fastify REST API.
+
+## Logging
+
+### `logs`
+
+Path to the log file.
+
+- **Type**: string
+- **Default**: `./signet.log`
+
+### `verbose`
+
+Enable verbose logging for debugging.
+
+- **Type**: boolean
+- **Default**: `false`
+
+When `true`, outputs detailed debug information including NIP-46 request/response details and relay connection events.
 
 ## Security Settings
 
@@ -125,6 +141,31 @@ Secret included in the bunker connection URI. Used to validate connection attemp
 - **Note**: This is separate from `jwtSecret` which is used for REST API auth.
 - **Behavior**: The secret validates that a client has the correct bunker URI, but does **not** auto-approve the connection. All first-time connections require manual approval via the UI, where you select a trust level. Invalid secrets are silently rejected.
 
+### `killSwitch`
+
+Emergency remote control via Nostr DMs. Allows you to lock keys and suspend apps when you can't access the web UI.
+
+- **Type**: object (optional)
+- **Default**: Not configured (disabled)
+
+```json
+{
+  "killSwitch": {
+    "adminNpub": "npub1youradminnpubhere...",
+    "adminRelays": ["wss://relay.damus.io", "wss://nos.lol"],
+    "dmType": "NIP17"
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `adminNpub` | string | Your admin npub - only DMs from this pubkey are accepted |
+| `adminRelays` | string[] | Relays to listen for admin DMs |
+| `dmType` | `NIP04` \| `NIP17` | DM encryption protocol (NIP-17 recommended for privacy) |
+
+See **[Kill Switch Guide](KILLSWITCH.md)** for full command reference, usage examples, and troubleshooting.
+
 ## Rate Limiting
 
 The API includes built-in rate limiting for sensitive endpoints:
@@ -153,6 +194,8 @@ SIGNET_PORT=3001 UI_PORT=8080 EXTERNAL_URL=https://signet.example.com docker com
 | `SIGNET_HOST` | Host binding for the REST API | `0.0.0.0` |
 | `EXTERNAL_URL` | Public URL of the UI (for authorization flow) | `http://localhost:4174` |
 | `DATABASE_URL` | SQLite database path | `file:~/.signet-config/signet.db` |
+| `SIGNET_LOCAL` | Set to `1` for local development (uses relative DB path) | (not set) |
+| `NODE_ENV` | Set to `development` for dev mode | `production` |
 
 ### UI Variables (`signet-ui`)
 
