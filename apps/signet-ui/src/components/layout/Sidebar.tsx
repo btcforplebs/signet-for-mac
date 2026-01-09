@@ -1,8 +1,8 @@
 import React, { useState, useCallback } from 'react';
-import { Home, Smartphone, Key, Activity, Settings, HelpCircle, ChevronDown, ChevronRight, QrCode, Plus, Lock, LockOpen, Loader2 } from 'lucide-react';
+import { Home, Smartphone, Key, Activity, Settings, HelpCircle, ChevronDown, ChevronRight, Plus, Lock, LockOpen, Loader2 } from 'lucide-react';
 import type { KeyInfo, RelayStatusResponse } from '@signet/types';
 import { UnlockKeyModal } from './UnlockKeyModal.js';
-import { BunkerURIModal } from './BunkerURIModal.js';
+import { DeadManSwitchCard } from './DeadManSwitchCard.js';
 import styles from './Sidebar.module.css';
 
 export type NavItem = 'home' | 'apps' | 'activity' | 'keys' | 'help' | 'settings';
@@ -20,6 +20,7 @@ interface SidebarProps {
   unlockingKey?: string | null;
   onLockKey?: (keyName: string) => Promise<boolean>;
   onUnlockKey?: (keyName: string, passphrase: string) => Promise<boolean>;
+  onConnectApp?: () => void;
 }
 
 export function Sidebar({
@@ -35,17 +36,12 @@ export function Sidebar({
   unlockingKey,
   onLockKey,
   onUnlockKey,
+  onConnectApp,
 }: SidebarProps) {
   const [keysExpanded, setKeysExpanded] = useState(true);
   const [relaysExpanded, setRelaysExpanded] = useState(true);
-  const [bunkerModalKey, setBunkerModalKey] = useState<string | null>(null);
   const [unlockModalKey, setUnlockModalKey] = useState<string | null>(null);
   const [unlockError, setUnlockError] = useState<string | null>(null);
-
-  const handleShowBunkerUri = useCallback((e: React.MouseEvent, keyName: string) => {
-    e.stopPropagation(); // Don't trigger key selection
-    setBunkerModalKey(keyName);
-  }, []);
 
   const handleLockKey = useCallback(async (e: React.MouseEvent, keyName: string) => {
     e.stopPropagation();
@@ -101,16 +97,32 @@ export function Sidebar({
         <ul className={styles.navList}>
           {navItems.map((item) => (
             <li key={item.id}>
-              <button
-                type="button"
-                className={`${styles.navItem} ${activeNav === item.id ? styles.navItemActive : ''}`}
-                onClick={() => onNavChange(item.id)}
-                aria-current={activeNav === item.id ? 'page' : undefined}
-              >
-                <span className={styles.navIcon}>{item.icon}</span>
-                <span className={styles.navLabel}>{item.label}</span>
-                {item.badge && <span className={styles.navBadge}>{item.badge}</span>}
-              </button>
+              <div className={styles.navItemRow}>
+                <button
+                  type="button"
+                  className={`${styles.navItem} ${activeNav === item.id ? styles.navItemActive : ''}`}
+                  onClick={() => onNavChange(item.id)}
+                  aria-current={activeNav === item.id ? 'page' : undefined}
+                >
+                  <span className={styles.navIcon}>{item.icon}</span>
+                  <span className={styles.navLabel}>{item.label}</span>
+                  {item.badge && <span className={styles.navBadge}>{item.badge}</span>}
+                </button>
+                {item.id === 'apps' && onConnectApp && (
+                  <button
+                    type="button"
+                    className={styles.navAddButton}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onConnectApp();
+                    }}
+                    aria-label="Connect app via nostrconnect"
+                    title="Connect app via nostrconnect"
+                  >
+                    <Plus size={14} />
+                  </button>
+                )}
+              </div>
             </li>
           ))}
         </ul>
@@ -212,18 +224,6 @@ export function Sidebar({
                           )}
                         </button>
                       )}
-                      {/* Bunker URI button for online keys */}
-                      {key.status === 'online' && (
-                        <button
-                          type="button"
-                          className={styles.copyButton}
-                          onClick={(e) => handleShowBunkerUri(e, key.name)}
-                          title="Show bunker URI"
-                          aria-label="Show bunker URI QR code"
-                        >
-                          <QrCode size={12} />
-                        </button>
-                      )}
                     </div>
                   </li>
                 ))
@@ -279,10 +279,14 @@ export function Sidebar({
             </ul>
           )}
         </div>
+
       </nav>
 
       {/* Bottom Section */}
       <div className={styles.bottom}>
+        {/* Inactivity Lock */}
+        <DeadManSwitchCard keys={keys.map(k => ({ name: k.name, status: k.status, isEncrypted: k.isEncrypted }))} />
+
         <button
           type="button"
           className={`${styles.navItem} ${activeNav === 'help' ? styles.navItemActive : ''}`}
@@ -311,13 +315,6 @@ export function Sidebar({
         error={unlockError}
         onSubmit={handleUnlockSubmit}
         onCancel={handleUnlockCancel}
-      />
-
-      {/* Bunker URI Modal */}
-      <BunkerURIModal
-        open={bunkerModalKey !== null}
-        keyName={bunkerModalKey ?? ''}
-        onClose={() => setBunkerModalKey(null)}
       />
     </aside>
   );

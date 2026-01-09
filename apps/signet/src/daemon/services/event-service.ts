@@ -8,6 +8,14 @@ const debug = createDebug('signet:events');
 /**
  * Server-sent event types for real-time updates
  */
+export interface DeadManSwitchStatus {
+    enabled: boolean;
+    timeframeSec: number;
+    lastResetAt: number | null;
+    remainingSec: number | null;
+    panicTriggeredAt: number | null;
+}
+
 export type ServerEvent =
     | { type: 'request:created'; request: PendingRequest }
     | { type: 'request:approved'; requestId: string; activity: ActivityEntry }
@@ -26,6 +34,9 @@ export type ServerEvent =
     | { type: 'stats:updated'; stats: DashboardStats }
     | { type: 'relays:updated'; relays: RelayStatusResponse }
     | { type: 'admin:event'; activity: AdminActivityEntry }
+    | { type: 'deadman:panic'; status: DeadManSwitchStatus }
+    | { type: 'deadman:reset'; status: DeadManSwitchStatus }
+    | { type: 'deadman:updated'; status: DeadManSwitchStatus }
     | { type: 'ping' };
 
 export type EventCallback = (event: ServerEvent) => void;
@@ -194,6 +205,27 @@ export class EventService {
      */
     emitAdminEvent(activity: AdminActivityEntry): void {
         this.emit({ type: 'admin:event', activity });
+    }
+
+    /**
+     * Emit a deadman:panic event when the dead man's switch triggers
+     */
+    emitDeadmanPanic(status: DeadManSwitchStatus): void {
+        this.emit({ type: 'deadman:panic', status });
+    }
+
+    /**
+     * Emit a deadman:reset event when the timer is reset
+     */
+    emitDeadmanReset(status: DeadManSwitchStatus): void {
+        this.emit({ type: 'deadman:reset', status });
+    }
+
+    /**
+     * Emit a deadman:updated event when settings change
+     */
+    emitDeadmanUpdated(status: DeadManSwitchStatus): void {
+        this.emit({ type: 'deadman:updated', status });
     }
 }
 

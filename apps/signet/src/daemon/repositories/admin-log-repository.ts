@@ -3,11 +3,14 @@ import prisma from '../../db.js';
 export type AdminEventType =
     | 'key_locked'
     | 'key_unlocked'
+    | 'app_connected'
     | 'app_suspended'
     | 'app_unsuspended'
     | 'daemon_started'
     | 'status_checked'
-    | 'command_executed';
+    | 'command_executed'
+    | 'panic_triggered'
+    | 'deadman_reset';
 
 export interface AdminLogEntry {
     id: number;

@@ -7,11 +7,19 @@ import tech.geektoshi.signet.data.model.AppsResponse
 import tech.geektoshi.signet.data.model.ConnectionTokenResponse
 import tech.geektoshi.signet.data.model.SuspendAppBody
 import tech.geektoshi.signet.data.model.DashboardResponse
+import tech.geektoshi.signet.data.model.DeadManSwitchActionBody
+import tech.geektoshi.signet.data.model.DeadManSwitchResponse
+import tech.geektoshi.signet.data.model.DeadManSwitchStatus
+import tech.geektoshi.signet.data.model.DisableDeadManSwitchBody
+import tech.geektoshi.signet.data.model.EnableDeadManSwitchBody
 import tech.geektoshi.signet.data.model.HealthStatus
 import tech.geektoshi.signet.data.model.KeysResponse
+import tech.geektoshi.signet.data.model.NostrconnectRequest
+import tech.geektoshi.signet.data.model.NostrconnectResponse
 import tech.geektoshi.signet.data.model.OperationResponse
 import tech.geektoshi.signet.data.model.RelaysResponse
 import tech.geektoshi.signet.data.model.RequestsResponse
+import tech.geektoshi.signet.data.model.UpdateDeadManSwitchBody
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.okhttp.OkHttp
@@ -23,6 +31,7 @@ import io.ktor.client.request.get
 import io.ktor.client.request.parameter
 import io.ktor.client.request.patch
 import io.ktor.client.request.post
+import io.ktor.client.request.put
 import io.ktor.client.request.header
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
@@ -228,6 +237,25 @@ class SignetApiClient(
     }
 
     /**
+     * Connect to an app via nostrconnect:// URI.
+     */
+    suspend fun connectViaNostrconnect(
+        uri: String,
+        keyName: String,
+        trustLevel: String,
+        description: String? = null
+    ): NostrconnectResponse {
+        return client.post("/nostrconnect") {
+            setBody(NostrconnectRequest(
+                uri = uri,
+                keyName = keyName,
+                trustLevel = trustLevel,
+                description = description
+            ))
+        }.body()
+    }
+
+    /**
      * Get relay status
      */
     suspend fun getRelays(): RelaysResponse {
@@ -265,6 +293,90 @@ class SignetApiClient(
         } catch (e: Exception) {
             false
         }
+    }
+
+    // ==================== Dead Man's Switch (Inactivity Lock) ====================
+
+    /**
+     * Get Dead Man's Switch status
+     */
+    suspend fun getDeadManSwitchStatus(): DeadManSwitchStatus {
+        return client.get("/dead-man-switch").body()
+    }
+
+    /**
+     * Enable the Dead Man's Switch
+     */
+    suspend fun enableDeadManSwitch(timeframeSec: Int? = null): DeadManSwitchResponse {
+        return client.put("/dead-man-switch") {
+            setBody(EnableDeadManSwitchBody(
+                enabled = true,
+                timeframeSec = timeframeSec
+            ))
+        }.body()
+    }
+
+    /**
+     * Disable the Dead Man's Switch
+     */
+    suspend fun disableDeadManSwitch(
+        keyName: String,
+        passphrase: String
+    ): DeadManSwitchResponse {
+        return client.put("/dead-man-switch") {
+            setBody(DisableDeadManSwitchBody(
+                enabled = false,
+                keyName = keyName,
+                passphrase = passphrase
+            ))
+        }.body()
+    }
+
+    /**
+     * Update the Dead Man's Switch timeframe
+     */
+    suspend fun updateDeadManSwitchTimeframe(
+        keyName: String,
+        passphrase: String,
+        timeframeSec: Int
+    ): DeadManSwitchResponse {
+        return client.put("/dead-man-switch") {
+            setBody(UpdateDeadManSwitchBody(
+                timeframeSec = timeframeSec,
+                keyName = keyName,
+                passphrase = passphrase
+            ))
+        }.body()
+    }
+
+    /**
+     * Reset the Dead Man's Switch timer
+     */
+    suspend fun resetDeadManSwitch(
+        keyName: String,
+        passphrase: String
+    ): DeadManSwitchResponse {
+        return client.post("/dead-man-switch/reset") {
+            setBody(DeadManSwitchActionBody(
+                keyName = keyName,
+                passphrase = passphrase
+            ))
+        }.body()
+    }
+
+    /**
+     * Test the panic functionality (for testing)
+     */
+    suspend fun testDeadManSwitchPanic(
+        keyName: String,
+        passphrase: String
+    ): DeadManSwitchResponse {
+        return client.post("/dead-man-switch/test-panic") {
+            setBody(DeadManSwitchActionBody(
+                keyName = keyName,
+                passphrase = passphrase
+            ))
+        }.body()
     }
 
     /**

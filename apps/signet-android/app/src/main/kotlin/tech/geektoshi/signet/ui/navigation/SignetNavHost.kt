@@ -3,6 +3,8 @@ package tech.geektoshi.signet.ui.navigation
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -12,7 +14,13 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -20,7 +28,14 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import tech.geektoshi.signet.data.api.ServerEvent
+import tech.geektoshi.signet.data.api.SignetApiClient
+import tech.geektoshi.signet.data.model.ConnectedApp
+import tech.geektoshi.signet.data.model.DeadManSwitchStatus
+import tech.geektoshi.signet.data.model.KeyInfo
+import tech.geektoshi.signet.data.repository.EventBusRepository
 import tech.geektoshi.signet.data.repository.SettingsRepository
+import tech.geektoshi.signet.ui.components.InactivityLockScreen
 import tech.geektoshi.signet.ui.screens.activity.ActivityScreen
 import tech.geektoshi.signet.ui.screens.apps.AppsScreen
 import tech.geektoshi.signet.ui.screens.help.HelpScreen
@@ -34,6 +49,75 @@ import tech.geektoshi.signet.ui.theme.TextPrimary
 
 @Composable
 fun SignetNavHost(settingsRepository: SettingsRepository) {
+    val daemonUrl by settingsRepository.daemonUrl.collectAsState(initial = "")
+
+    // API client for inactivity lock operations
+    var apiClient by remember { mutableStateOf<SignetApiClient?>(null) }
+
+    // Create/close API client when daemonUrl changes
+    DisposableEffect(daemonUrl) {
+        val client = if (daemonUrl.isNotBlank()) SignetApiClient(daemonUrl) else null
+        apiClient = client
+        onDispose {
+            client?.close()
+        }
+    }
+
+    // Dead man switch status
+    var deadManSwitchStatus by remember { mutableStateOf<DeadManSwitchStatus?>(null) }
+
+    // Keys for passphrase verification
+    var keys by remember { mutableStateOf<List<KeyInfo>>(emptyList()) }
+
+    // Apps for resume functionality
+    var apps by remember { mutableStateOf<List<ConnectedApp>>(emptyList()) }
+
+    // Fetch initial dead man switch status and keys
+    LaunchedEffect(apiClient) {
+        apiClient?.let { client ->
+            try {
+                deadManSwitchStatus = client.getDeadManSwitchStatus()
+                keys = client.getKeys().keys
+                apps = client.getApps().apps
+            } catch (e: Exception) {
+                // Ignore errors on initial fetch
+            }
+        }
+    }
+
+    // Subscribe to SSE events for dead man switch updates
+    val eventBus = remember { EventBusRepository.getInstance() }
+    LaunchedEffect(Unit) {
+        eventBus.events.collect { event ->
+            when (event) {
+                is ServerEvent.DeadmanPanic -> {
+                    deadManSwitchStatus = event.status
+                    // Refresh keys to get updated lock states
+                    apiClient?.let { keys = it.getKeys().keys }
+                }
+                is ServerEvent.DeadmanReset -> {
+                    deadManSwitchStatus = event.status
+                }
+                is ServerEvent.DeadmanUpdated -> {
+                    deadManSwitchStatus = event.status
+                }
+                is ServerEvent.KeyUnlocked,
+                is ServerEvent.KeyLocked,
+                is ServerEvent.KeyCreated,
+                is ServerEvent.KeyDeleted -> {
+                    // Refresh keys on key changes
+                    apiClient?.let { keys = it.getKeys().keys }
+                }
+                is ServerEvent.AppConnected,
+                is ServerEvent.AppRevoked,
+                is ServerEvent.AppUpdated -> {
+                    // Refresh apps on app changes
+                    apiClient?.let { apps = it.getApps().apps }
+                }
+                else -> {}
+            }
+        }
+    }
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
@@ -119,12 +203,74 @@ fun SignetNavHost(settingsRepository: SettingsRepository) {
             composable(Screen.Settings.route) {
                 SettingsScreen(
                     settingsRepository = settingsRepository,
+                    apiClient = apiClient,
+                    keys = keys,
+                    deadManSwitchStatus = deadManSwitchStatus,
+                    onDeadManSwitchStatusChanged = { status ->
+                        deadManSwitchStatus = status
+                    },
                     onHelpClick = { navController.navigate(Screen.Help.route) }
                 )
             }
             composable(Screen.Help.route) {
                 HelpScreen(onBack = { navController.popBackStack() })
             }
+        }
+
+        // Inactivity Lock Screen overlay
+        val isPanicked = deadManSwitchStatus?.panicTriggeredAt != null
+        if (isPanicked) {
+            InactivityLockScreen(
+                triggeredAt = deadManSwitchStatus?.panicTriggeredAt,
+                keys = keys,
+                onRecover = { keyName, passphrase, resumeApps ->
+                    try {
+                        val client = apiClient ?: return@InactivityLockScreen Result.failure(
+                            Exception("Not connected to daemon")
+                        )
+
+                        // Step 1: Unlock the key
+                        val unlockResult = client.unlockKey(keyName, passphrase)
+                        if (!unlockResult.ok) {
+                            return@InactivityLockScreen Result.failure(
+                                Exception(unlockResult.error ?: "Failed to unlock key")
+                            )
+                        }
+
+                        // Step 2: Reset the dead man switch (clears panic state)
+                        val resetResult = client.resetDeadManSwitch(keyName, passphrase)
+                        if (!resetResult.ok) {
+                            return@InactivityLockScreen Result.failure(
+                                Exception(resetResult.error ?: "Failed to reset timer")
+                            )
+                        }
+
+                        // Update local status
+                        resetResult.status?.let { deadManSwitchStatus = it }
+
+                        // Step 3: Resume all suspended apps if requested
+                        if (resumeApps) {
+                            val suspendedApps = apps.filter { it.suspendedAt != null }
+                            suspendedApps.forEach { app ->
+                                try {
+                                    client.unsuspendApp(app.id)
+                                } catch (e: Exception) {
+                                    // Continue with other apps even if one fails
+                                }
+                            }
+                            // Refresh apps list
+                            apps = client.getApps().apps
+                        }
+
+                        // Refresh keys list
+                        keys = client.getKeys().keys
+
+                        Result.success(Unit)
+                    } catch (e: Exception) {
+                        Result.failure(e)
+                    }
+                }
+            )
         }
     }
 }

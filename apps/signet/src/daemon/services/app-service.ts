@@ -3,6 +3,7 @@ import { appRepository } from '../repositories/index.js';
 import { updateTrustLevel as updateTrustLevelAcl } from '../lib/acl.js';
 import { VALID_TRUST_LEVELS } from '../constants.js';
 import { getEventService } from './event-service.js';
+import { getNostrconnectService } from './nostrconnect-service.js';
 
 export class AppService {
     /**
@@ -111,6 +112,14 @@ export class AppService {
         }
 
         await appRepository.revoke(appId);
+
+        // Clean up per-app relay subscription (if any)
+        try {
+            const nostrconnectService = getNostrconnectService();
+            nostrconnectService.notifyAppRevoked(app.keyName, appId);
+        } catch {
+            // NostrconnectService may not be initialized yet (e.g., during tests)
+        }
 
         // Emit event for real-time updates
         getEventService().emitAppRevoked(appId);

@@ -12,10 +12,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -32,15 +34,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import tech.geektoshi.signet.data.api.ServerEvent
 import tech.geektoshi.signet.data.api.SignetApiClient
 import tech.geektoshi.signet.data.model.ConnectedApp
+import tech.geektoshi.signet.data.model.KeyInfo
 import tech.geektoshi.signet.data.repository.EventBusRepository
 import tech.geektoshi.signet.data.repository.SettingsRepository
 import tech.geektoshi.signet.ui.components.AppDetailSheet
+import tech.geektoshi.signet.ui.components.ConnectAppSheet
 import tech.geektoshi.signet.ui.components.EmptyState
+import tech.geektoshi.signet.ui.components.QRScannerSheet
 import tech.geektoshi.signet.ui.components.SkeletonAppCard
 import tech.geektoshi.signet.ui.components.pressScale
 import tech.geektoshi.signet.ui.theme.BgSecondary
@@ -63,7 +69,11 @@ fun AppsScreen() {
     var isRefreshing by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var apps by remember { mutableStateOf<List<ConnectedApp>>(emptyList()) }
+    var keys by remember { mutableStateOf<List<KeyInfo>>(emptyList()) }
     var selectedApp by remember { mutableStateOf<ConnectedApp?>(null) }
+    var showConnectSheet by remember { mutableStateOf(false) }
+    var showQRScanner by remember { mutableStateOf(false) }
+    var scannedUri by remember { mutableStateOf("") }
     var refreshCounter by remember { mutableIntStateOf(0) }
     val eventBus = remember { EventBusRepository.getInstance() }
 
@@ -90,6 +100,13 @@ fun AppsScreen() {
                     // App updated (trust level or description changed), refresh list
                     refreshCounter++
                 }
+                // Key state changes - refresh to update available keys for ConnectAppSheet
+                is ServerEvent.KeyCreated,
+                is ServerEvent.KeyUnlocked,
+                is ServerEvent.KeyLocked,
+                is ServerEvent.KeyDeleted -> {
+                    refreshCounter++
+                }
                 else -> {}
             }
         }
@@ -109,17 +126,61 @@ fun AppsScreen() {
         if (daemonUrl.isNotEmpty()) {
             if (!isRefreshing) isLoading = true
             error = null
+            val client = SignetApiClient(daemonUrl)
             try {
-                val client = SignetApiClient(daemonUrl)
                 apps = client.getApps().apps
-                client.close()
+                keys = client.getKeys().keys
             } catch (e: Exception) {
                 error = e.message ?: "Failed to connect"
             } finally {
+                client.close()
                 isLoading = false
                 isRefreshing = false
             }
         }
+    }
+
+    // Connect App Sheet
+    if (showConnectSheet) {
+        ConnectAppSheet(
+            keys = keys,
+            daemonUrl = daemonUrl,
+            initialUri = scannedUri,
+            onDismiss = {
+                showConnectSheet = false
+                scannedUri = ""
+            },
+            onSuccess = { warning ->
+                refreshCounter++
+                val message = if (warning != null) {
+                    "App connected, but: $warning"
+                } else {
+                    "App connected successfully"
+                }
+                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            },
+            onScanQR = {
+                showConnectSheet = false
+                showQRScanner = true
+            }
+        )
+    }
+
+    // QR Scanner Sheet
+    if (showQRScanner) {
+        QRScannerSheet(
+            onScanned = { uri ->
+                if (uri.startsWith("nostrconnect://")) {
+                    scannedUri = uri
+                    showQRScanner = false
+                    showConnectSheet = true
+                }
+            },
+            onDismiss = {
+                showQRScanner = false
+                showConnectSheet = true
+            }
+        )
     }
 
     if (isLoading) {
@@ -178,30 +239,45 @@ fun AppsScreen() {
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {
-                Text(
-                    text = "Connected Apps",
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-        }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Connected Apps",
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    IconButton(
+                        onClick = { showConnectSheet = true }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Add,
+                            contentDescription = "Connect App",
+                            tint = SignetPurple
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            }
 
-        if (apps.isEmpty()) {
-            item {
-                EmptyState(
-                    icon = Icons.Outlined.Apps,
-                    message = "No connected apps",
-                    subtitle = "Apps that connect to your keys will appear here"
-                )
+            if (apps.isEmpty()) {
+                item {
+                    EmptyState(
+                        icon = Icons.Outlined.Apps,
+                        message = "No connected apps",
+                        subtitle = "Tap + for NostrConnect, or share your key's bunker URI with an app"
+                    )
+                }
+            } else {
+                items(apps) { app ->
+                    AppCard(
+                        app = app,
+                        onClick = { selectedApp = app; Unit }
+                    )
+                }
             }
-        } else {
-            items(apps) { app ->
-                AppCard(
-                    app = app,
-                    onClick = { selectedApp = app; Unit }
-                )
-            }
-        }
         }
     }
 }

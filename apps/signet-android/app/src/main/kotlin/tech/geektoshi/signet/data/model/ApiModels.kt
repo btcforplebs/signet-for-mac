@@ -32,14 +32,14 @@ data class ActivityEntry(
 )
 
 /**
- * Admin activity entry for admin events (key lock/unlock, app suspend/resume, daemon start, commands)
+ * Admin activity entry for admin events (key lock/unlock, app connect/suspend/resume, daemon start, commands)
  */
 @Serializable
 data class AdminActivityEntry(
     val id: Int,
     val timestamp: String,
     val category: String,  // Always 'admin'
-    val eventType: String,  // 'key_locked' | 'key_unlocked' | 'app_suspended' | 'app_unsuspended' | 'daemon_started' | 'status_checked' | 'command_executed'
+    val eventType: String,  // 'key_locked' | 'key_unlocked' | 'app_connected' | 'app_suspended' | 'app_unsuspended' | 'daemon_started' | 'status_checked' | 'command_executed'
     val keyName: String? = null,
     val appId: Int? = null,
     val appName: String? = null,
@@ -70,7 +70,7 @@ data class MixedActivityEntry(
     val approvalType: String? = null,
     // Admin event fields
     val category: String? = null,  // 'admin' for admin events
-    val eventType: String? = null,  // 'key_locked' | 'key_unlocked' | 'app_suspended' | 'app_unsuspended' | 'daemon_started' | 'status_checked' | 'command_executed'
+    val eventType: String? = null,  // 'key_locked' | 'key_unlocked' | 'app_connected' | 'app_suspended' | 'app_unsuspended' | 'daemon_started' | 'status_checked' | 'command_executed'
     val appId: Int? = null,
     val clientName: String? = null,
     val clientVersion: String? = null,
@@ -279,6 +279,32 @@ data class ConnectionTokenResponse(
 )
 
 /**
+ * Request body for connecting via nostrconnect
+ */
+@Serializable
+data class NostrconnectRequest(
+    val uri: String,
+    val keyName: String,
+    val trustLevel: String,
+    val description: String? = null
+)
+
+/**
+ * Response from connecting via nostrconnect
+ */
+@Serializable
+data class NostrconnectResponse(
+    val ok: Boolean = false,
+    val appId: Int? = null,
+    val clientPubkey: String? = null,
+    val relays: List<String>? = null,
+    val connectResponseSent: Boolean? = null,
+    val connectResponseError: String? = null,
+    val error: String? = null,
+    val errorType: String? = null
+)
+
+/**
  * Memory usage stats
  */
 @Serializable
@@ -319,4 +345,66 @@ data class HealthStatus(
     val subscriptions: Int,
     val sseClients: Int,
     val lastPoolReset: String? = null
+)
+
+/**
+ * Dead Man's Switch (Inactivity Lock) status
+ */
+@Serializable
+data class DeadManSwitchStatus(
+    val enabled: Boolean,
+    val timeframeSec: Int,
+    val lastResetAt: Long? = null,
+    val remainingSec: Int? = null,
+    val panicTriggeredAt: Long? = null,
+    val remainingAttempts: Int = 5
+)
+
+/**
+ * Response from Dead Man's Switch operations
+ */
+@Serializable
+data class DeadManSwitchResponse(
+    val ok: Boolean = false,
+    val status: DeadManSwitchStatus? = null,
+    val error: String? = null,
+    val remainingAttempts: Int? = null
+)
+
+/**
+ * Request body for enabling Dead Man's Switch
+ */
+@Serializable
+data class EnableDeadManSwitchBody(
+    val enabled: Boolean = true,
+    val timeframeSec: Int? = null
+)
+
+/**
+ * Request body for disabling Dead Man's Switch
+ */
+@Serializable
+data class DisableDeadManSwitchBody(
+    val enabled: Boolean = false,
+    val keyName: String,
+    val passphrase: String
+)
+
+/**
+ * Request body for updating Dead Man's Switch timeframe
+ */
+@Serializable
+data class UpdateDeadManSwitchBody(
+    val timeframeSec: Int,
+    val keyName: String,
+    val passphrase: String
+)
+
+/**
+ * Request body for resetting/testing Dead Man's Switch
+ */
+@Serializable
+data class DeadManSwitchActionBody(
+    val keyName: String,
+    val passphrase: String
 )

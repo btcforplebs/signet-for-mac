@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect } fr
 
 export interface Toast {
   message: string;
-  type: 'success' | 'error' | 'notification';
+  type: 'success' | 'error' | 'warning' | 'notification';
   action?: () => void;
   actionLabel?: string;
   undo?: () => void;

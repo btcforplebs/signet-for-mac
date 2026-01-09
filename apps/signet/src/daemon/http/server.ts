@@ -19,6 +19,8 @@ import { registerDashboardRoutes, type DashboardRouteConfig } from './routes/das
 import { registerTokensRoutes } from './routes/tokens.js';
 import { registerPoliciesRoutes } from './routes/policies.js';
 import { registerEventsRoutes } from './routes/events.js';
+import { registerNostrconnectRoutes } from './routes/nostrconnect.js';
+import { registerDeadManSwitchRoutes } from './routes/dead-man-switch.js';
 import type { KeyService, RequestService, AppService, DashboardService, EventService, RelayService } from '../services/index.js';
 import type { ConnectionManager } from '../connection-manager.js';
 import type { NostrConfig } from '../../config/types.js';
@@ -93,6 +95,9 @@ export class HttpServer {
 
         // CORS handling with origin validation
         const allowedOrigins = this.config.allowedOrigins;
+        if (allowedOrigins.includes('*')) {
+            console.log('⚠️ WARNING: CORS is configured with wildcard origin (*). This is insecure for production!');
+        }
         this.fastify.addHook('onRequest', async (request, reply) => {
             const origin = request.headers.origin;
 
@@ -142,12 +147,12 @@ export class HttpServer {
             return reply.send({ token });
         });
 
-        // Connection routes (GET only, no CSRF needed)
+        // Connection routes (POST /connections/refresh needs CSRF)
         registerConnectionRoutes(this.fastify, {
             connectionManager: this.config.connectionManager,
             nostrConfig: this.config.nostrConfig,
             relayService: this.config.relayService,
-        }, [authMiddleware]);
+        }, { auth: [authMiddleware], csrf: [csrfMiddleware] });
 
         // Request routes (state-changing, needs CSRF)
         registerRequestRoutes(this.fastify, {
@@ -199,6 +204,20 @@ export class HttpServer {
         registerEventsRoutes(this.fastify, {
             eventService: this.config.eventService,
         }, [authMiddleware]);
+
+        // Nostrconnect routes (state-changing, needs CSRF)
+        registerNostrconnectRoutes(this.fastify, {
+            appService: this.config.appService,
+        }, {
+            auth: [authMiddleware],
+            csrf: [csrfMiddleware],
+        });
+
+        // Dead man's switch routes (state-changing, needs CSRF)
+        registerDeadManSwitchRoutes(this.fastify, {
+            auth: [authMiddleware],
+            csrf: [csrfMiddleware],
+        });
     }
 
     private async listen(): Promise<void> {

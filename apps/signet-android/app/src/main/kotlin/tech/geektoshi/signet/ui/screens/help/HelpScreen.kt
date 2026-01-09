@@ -88,7 +88,7 @@ fun HelpScreen(
                     color = TextPrimary
                 )
 
-                ExpandableSection(title = "What is Signet?", defaultExpanded = true) {
+                ExpandableSection(title = "What is Signet?") {
                     Text(
                         text = "Signet is a remote signer for Nostr. It securely holds your private keys and approves signing requests from apps, so your keys never leave this device.\n\nWhen a Nostr app wants to post, react, or send a message on your behalf, it sends a request to Signet. You can approve or deny each request, giving you full control over what gets signed with your identity.",
                         style = MaterialTheme.typography.bodyMedium,
@@ -100,7 +100,7 @@ fun HelpScreen(
 
                 ExpandableSection(title = "Connecting an App") {
                     Text(
-                        text = "1. Go to the Keys page and create or select a key\n2. Copy the bunker URI\n3. Paste the URI into your Nostr app's remote signer settings\n4. Return to Signet and approve the connection request\n\nThe bunker URI looks like: bunker://npub...?relay=wss://...",
+                        text = "There are two ways to connect a Nostr app:\n\nbunker:// (You initiate)\n1. Go to the Keys page and select a key\n2. Tap Generate bunker URI to get a one-time connection link\n3. Paste the URI into your Nostr app's remote signer settings\n4. The app connects automatically\n\nnostrconnect:// (App initiates)\n1. In your Nostr app, look for \"Connect via remote signer\" or similar\n2. The app displays a nostrconnect:// URI or QR code\n3. In Signet, tap + on the Apps page\n4. Paste the URI or scan the QR code, then choose a key and trust level\n5. Tap Connect to complete the handshake\n\nBoth methods create the same secure connection. Use whichever your app supports.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = TextSecondary
                     )

@@ -9,6 +9,7 @@ import { bytesToHex, hexToBytes } from '../lib/hex.js';
 import type { KeyService } from './key-service.js';
 import type { AppService } from './app-service.js';
 import { emitCurrentStats, getEventService } from './event-service.js';
+import { getDeadManSwitchService } from './dead-man-switch-service.js';
 import { adminLogRepository, type AdminEventType } from '../repositories/admin-log-repository.js';
 import { getKillSwitchClientInfo } from '../lib/client-info.js';
 
@@ -24,6 +25,7 @@ type AdminCommand =
     | 'lockall keys'      // Lock all keys
     | 'suspendall apps'   // Suspend all apps
     | 'resumeall apps'    // Resume all apps
+    | 'alive'             // Reset dead man's switch timer
     | 'status';
 
 /**
@@ -567,6 +569,14 @@ export class AdminCommandService {
                 break;
             }
 
+            case 'alive': {
+                // Reset dead man's switch timer
+                result = await this.resetDeadManSwitch();
+                console.log(`[KillSwitch] ${result}`);
+                changesState = false; // Timer reset doesn't change key/app state
+                break;
+            }
+
             default: {
                 // Check for key-scoped app commands first
                 if (command.startsWith('suspendall apps for ')) {
@@ -600,7 +610,7 @@ export class AdminCommandService {
                     result = await this.resumeSingleApp(appName);
                     console.log(`[KillSwitch] ${result}`);
                 } else {
-                    result = `⚠ Unknown command: "${command}".\n\nValid commands:\n• panic (or lockall, killswitch) - emergency lock all\n• lockall keys\n• lock <keyname>\n• suspendall apps [for <keyname>]\n• suspend <appname>\n• resumeall apps [for <keyname>]\n• resume <appname>\n• status`;
+                    result = `⚠ Unknown command: "${command}".\n\nValid commands:\n• panic (or lockall, killswitch) - emergency lock all\n• lockall keys\n• lock <keyname>\n• suspendall apps [for <keyname>]\n• suspend <appname>\n• resumeall apps [for <keyname>]\n• resume <appname>\n• alive - reset dead man's switch timer\n• status`;
                     console.log(`[KillSwitch] Unknown command: "${command}"`);
                     changesState = false;
                 }
@@ -897,6 +907,36 @@ export class AdminCommandService {
         }
 
         return lines.join('\n');
+    }
+
+    /**
+     * Reset the dead man's switch timer via DM command
+     */
+    private async resetDeadManSwitch(): Promise<string> {
+        try {
+            const dmsService = getDeadManSwitchService();
+            const status = await dmsService.getStatus();
+
+            if (!status.enabled) {
+                return '⚠ Dead man\'s switch is not enabled';
+            }
+
+            if (status.panicTriggeredAt) {
+                return '⚠ Panic already triggered. Visit dashboard to recover.';
+            }
+
+            await dmsService.resetViaDm();
+            const newStatus = await dmsService.getStatus();
+
+            const remaining = newStatus.remainingSec ?? 0;
+            const days = Math.floor(remaining / (24 * 60 * 60));
+            const hours = Math.floor((remaining % (24 * 60 * 60)) / (60 * 60));
+            const timeStr = days > 0 ? `${days}d ${hours}h` : `${hours}h`;
+
+            return `✓ Dead man's switch timer reset\nTime remaining: ${timeStr}`;
+        } catch (error) {
+            return `⚠ Failed to reset timer: ${(error as Error).message}`;
+        }
     }
 
     /**

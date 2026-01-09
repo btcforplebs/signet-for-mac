@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, chmodSync } from 'fs';
 import { dirname } from 'path';
 import crypto from 'crypto';
 import type { ConfigFile } from './types.js';
@@ -127,4 +127,11 @@ export async function saveConfig(configPath: string, config: ConfigFile): Promis
 
     const contents = JSON.stringify(config, null, 2);
     writeFileSync(configPath, contents + '\n', 'utf8');
+
+    // Restrict permissions to owner only (contains secrets)
+    try {
+        chmodSync(configPath, 0o600);
+    } catch {
+        // chmod may fail on Windows - permissions handled differently there
+    }
 }

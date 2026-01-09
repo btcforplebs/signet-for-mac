@@ -1,7 +1,7 @@
 import React from 'react';
 import type { ActivityEntry, AdminActivityEntry, MixedActivityEntry } from '@signet/types';
 import { getMethodLabelPastTense } from '@signet/types';
-import { Clock, ChevronRight, Check, X, Activity, Shield, Repeat, Lock, Unlock, Pause, Play, Server, Eye, Terminal } from 'lucide-react';
+import { Clock, ChevronRight, Check, X, Activity, Shield, Repeat, Lock, Unlock, Link, Pause, Play, Server, Eye, Terminal } from 'lucide-react';
 import { formatTimeAgo } from '../../lib/formatters.js';
 import styles from './HomeView.module.css';
 
@@ -15,6 +15,7 @@ function getAdminEventLabel(eventType: string): string {
   switch (eventType) {
     case 'key_locked': return 'Key locked';
     case 'key_unlocked': return 'Key unlocked';
+    case 'app_connected': return 'App connected';
     case 'app_suspended': return 'App suspended';
     case 'app_unsuspended': return 'App resumed';
     case 'daemon_started': return 'Daemon started';
@@ -49,6 +50,7 @@ export function RecentActivityFeed({
       switch (entry.eventType) {
         case 'key_locked': return <Lock size={14} className={styles.activityIconAdmin} />;
         case 'key_unlocked': return <Unlock size={14} className={styles.activityIconAdmin} />;
+        case 'app_connected': return <Link size={14} className={styles.activityIconAdmin} />;
         case 'app_suspended': return <Pause size={14} className={styles.activityIconAdmin} />;
         case 'app_unsuspended': return <Play size={14} className={styles.activityIconAdmin} />;
         case 'daemon_started': return <Server size={14} className={styles.activityIconAdmin} />;

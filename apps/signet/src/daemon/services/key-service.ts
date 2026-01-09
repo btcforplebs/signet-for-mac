@@ -66,6 +66,14 @@ export class KeyService {
     }
 
     /**
+     * Get the secret (nsec) for an active key.
+     * Returns null if the key is not active.
+     */
+    getActiveKey(keyName: string): string | null {
+        return this.activeKeys[keyName] ?? null;
+    }
+
+    /**
      * Get counts of keys by status (for health monitoring).
      * Fast synchronous method using in-memory state.
      */
@@ -248,6 +256,25 @@ export class KeyService {
         getEventService().emitKeyUnlocked(keyName);
 
         return decrypted;
+    }
+
+    /**
+     * Verify a passphrase for an encrypted key without changing its state.
+     * Works for both active and locked keys.
+     * Throws if the passphrase is invalid or the key is not encrypted.
+     */
+    verifyPassphrase(keyName: string, passphrase: string): void {
+        const record = this.config.allKeys[keyName];
+        if (!record) {
+            throw new Error('Key not found');
+        }
+
+        if (!record.iv || !record.data) {
+            throw new Error('Key is not encrypted');
+        }
+
+        // Attempt to decrypt - throws if passphrase is wrong
+        decryptSecret({ iv: record.iv, data: record.data }, passphrase);
     }
 
     loadKeyMaterial(keyName: string, nsec: string): void {

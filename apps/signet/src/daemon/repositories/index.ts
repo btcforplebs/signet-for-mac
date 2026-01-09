@@ -8,3 +8,4 @@ export {
 } from './request-repository.js';
 export { AppRepository, appRepository, type AppRecord } from './app-repository.js';
 export { LogRepository, logRepository, type LogEntry, type ActivityEntry } from './log-repository.js';
+export { SettingsRepository, settingsRepository } from './settings-repository.js';

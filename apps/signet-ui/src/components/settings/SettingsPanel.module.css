@@ -61,6 +61,23 @@
   color: var(--text-tertiary);
 }
 
+.settingDescriptionWarning {
+  color: var(--warning);
+}
+
+.settingDescriptionDanger {
+  color: var(--danger);
+}
+
+.configLink {
+  color: var(--accent);
+  font-weight: var(--font-normal);
+}
+
+.configLink:hover {
+  text-decoration: underline;
+}
+
 /* Toggle Switch */
 .toggle {
   position: relative;
@@ -299,3 +316,187 @@
     min-height: 44px;
   }
 }
+
+/* Modal Styles */
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+}
+
+.modal {
+  width: 100%;
+  max-width: 400px;
+  margin: var(--space-4);
+  padding: var(--space-6);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+}
+
+.modalTitle {
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  margin: 0 0 var(--space-2) 0;
+}
+
+.modalDescription {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-5);
+  line-height: 1.5;
+}
+
+.formGroup {
+  margin-bottom: var(--space-4);
+}
+
+.formGroup label {
+  display: block;
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--text-primary);
+  margin-bottom: var(--space-2);
+}
+
+.formGroup select,
+.formGroup input {
+  width: 100%;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  transition: all var(--transition-fast);
+}
+
+.formGroup select:focus,
+.formGroup input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-muted);
+}
+
+.formGroup select:disabled,
+.formGroup input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.formGroup input::placeholder {
+  color: var(--text-muted);
+}
+
+.formError {
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--danger-muted);
+  border-radius: var(--radius-md);
+  color: var(--danger);
+  font-size: var(--text-sm);
+}
+
+.modalActions {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+
+.btnSecondary,
+.btnPrimary {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btnSecondary {
+  background: var(--surface-2);
+  color: var(--text-secondary);
+}
+
+.btnSecondary:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.btnPrimary {
+  background: var(--accent);
+  color: white;
+}
+
+.btnPrimary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.btnSecondary:disabled,
+.btnPrimary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Duration Input (number + unit selector) */
+.durationInput {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.durationValue {
+  flex: 1;
+  min-width: 80px;
+}
+
+.durationUnit {
+  flex: 0 0 auto;
+  min-width: 100px;
+}
+
+/* Override width: 100% from .formGroup for duration inputs */
+.durationInput input,
+.durationInput select {
+  width: auto;
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Touch target sizing for modals */
+@media (pointer: coarse) {
+  .formGroup select,
+  .formGroup input {
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .btnSecondary,
+  .btnPrimary {
+    min-height: 44px;
+  }
+}
+

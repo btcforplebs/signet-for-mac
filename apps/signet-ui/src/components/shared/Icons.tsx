@@ -30,6 +30,7 @@ import {
   Server,
   Eye,
   Terminal,
+  Link,
   type LucideProps,
 } from 'lucide-react';
 import type { AdminEventType } from '@signet/types';
@@ -125,6 +126,8 @@ export function getAdminEventIcon(eventType: AdminEventType): React.ComponentTyp
       return Lock;
     case 'key_unlocked':
       return Unlock;
+    case 'app_connected':
+      return Link;
     case 'app_suspended':
       return Pause;
     case 'app_unsuspended':
@@ -147,6 +150,8 @@ export function getAdminEventLabel(eventType: AdminEventType): string {
       return 'Key locked';
     case 'key_unlocked':
       return 'Key unlocked';
+    case 'app_connected':
+      return 'App connected';
     case 'app_suspended':
       return 'App suspended';
     case 'app_unsuspended':

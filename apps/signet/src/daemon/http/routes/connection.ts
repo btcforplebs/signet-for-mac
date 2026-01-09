@@ -3,7 +3,7 @@ import type { RelayStatusResponse } from '@signet/types';
 import type { ConnectionManager } from '../../connection-manager.js';
 import type { RelayService } from '../../services/index.js';
 import type { NostrConfig } from '../../../config/types.js';
-import type { PreHandlerAuth } from '../types.js';
+import type { PreHandlerAuthCsrf } from '../types.js';
 
 export interface ConnectionRouteConfig {
     connectionManager: ConnectionManager;
@@ -14,9 +14,9 @@ export interface ConnectionRouteConfig {
 export function registerConnectionRoutes(
     fastify: FastifyInstance,
     config: ConnectionRouteConfig,
-    preHandler: PreHandlerAuth
+    preHandler: PreHandlerAuthCsrf
 ): void {
-    fastify.get('/connection', { preHandler }, async (_request: FastifyRequest, reply: FastifyReply) => {
+    fastify.get('/connection', { preHandler: preHandler.auth }, async (_request: FastifyRequest, reply: FastifyReply) => {
         await config.connectionManager.waitUntilReady();
         const info = config.connectionManager.getConnectionInfo();
 
@@ -34,7 +34,7 @@ export function registerConnectionRoutes(
         });
     });
 
-    fastify.get('/relays', { preHandler }, async (_request: FastifyRequest, reply: FastifyReply) => {
+    fastify.get('/relays', { preHandler: preHandler.auth }, async (_request: FastifyRequest, reply: FastifyReply) => {
         const statuses = config.relayService.getStatus();
         const connected = config.relayService.getConnectedCount();
 
@@ -50,5 +50,16 @@ export function registerConnectionRoutes(
         };
 
         return reply.send(response);
+    });
+
+    /**
+     * Force reset relay connections.
+     * Use when WebSocket connections are silently dead (e.g., after fail2ban/iptables changes).
+     * POST /connections/refresh
+     */
+    fastify.post('/connections/refresh', { preHandler: [...preHandler.auth, ...preHandler.csrf] }, async (_request: FastifyRequest, reply: FastifyReply) => {
+        console.log('[API] Relay pool refresh requested');
+        config.relayService.resetPool();
+        return reply.send({ ok: true, message: 'Relay pool reset initiated' });
     });
 }

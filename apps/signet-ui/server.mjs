@@ -27,6 +27,7 @@ const apiPaths = [
   '/requests',
   '/register',
   '/connection',
+  '/connections',
   '/relays',
   '/keys',
   '/apps',
@@ -34,7 +35,9 @@ const apiPaths = [
   '/health',
   '/tokens',
   '/policies',
-  '/csrf-token'
+  '/csrf-token',
+  '/nostrconnect',
+  '/dead-man-switch'
 ];
 
 // SSE proxy for /events endpoint (no timeout, streaming)

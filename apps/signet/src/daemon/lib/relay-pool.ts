@@ -163,12 +163,19 @@ export class RelayPool {
     /**
      * Subscribe to events matching a filter.
      * Returns a cleanup function to close the subscription.
+     *
+     * @param filter - The filter to match events against
+     * @param onEvent - Callback for each matching event
+     * @param subscriptionId - Unique ID for this subscription
+     * @param onEose - Optional callback when EOSE is received
+     * @param customRelays - Optional custom relays to use (defaults to pool's configured relays)
      */
     public subscribe(
         filter: SubscriptionFilter,
         onEvent: (event: Event) => void,
         subscriptionId: string,
-        onEose?: () => void
+        onEose?: () => void,
+        customRelays?: string[]
     ): () => void {
         // Close existing subscription with same ID if any
         const existing = this.subscriptions.get(subscriptionId);
@@ -178,10 +185,11 @@ export class RelayPool {
             this.subscriptions.delete(subscriptionId);
         }
 
-        debug('creating subscription %s with filter %o', subscriptionId, filter);
+        const relaysToUse = customRelays ?? this.relays;
+        debug('creating subscription %s on %d relays with filter %o', subscriptionId, relaysToUse.length, filter);
 
         const sub = this.pool.subscribeMany(
-            this.relays,
+            relaysToUse,
             filter,
             {
                 onevent: (event) => {
@@ -192,7 +200,10 @@ export class RelayPool {
                     debug('EOSE received for subscription %s', subscriptionId);
                     // Mark all relays as connected when we receive EOSE
                     // (indicates at least one relay responded)
-                    this.markAllRelaysConnected();
+                    // Only mark pool's relays, not custom relays
+                    if (!customRelays) {
+                        this.markAllRelaysConnected();
+                    }
                     onEose?.();
                 },
                 onclose: (reasons) => {
@@ -213,31 +224,41 @@ export class RelayPool {
     }
 
     /**
-     * Publish an event to all relays.
+     * Publish an event to relays.
      * Resolves when at least one relay accepts the event.
      * Throws if no relay accepts the event.
+     *
+     * @param event - The event to publish
+     * @param customRelays - Optional custom relays to publish to (defaults to pool's configured relays)
      */
-    public async publish(event: Event): Promise<{ successes: string[]; failures: Array<{ url: string; error: string }> }> {
-        debug('publishing event %s (kind %d)', event.id?.slice(0, 8), event.kind);
+    public async publish(event: Event, customRelays?: string[]): Promise<{ successes: string[]; failures: Array<{ url: string; error: string }> }> {
+        const relaysToUse = customRelays ?? this.relays;
+        debug('publishing event %s (kind %d) to %d relays', event.id?.slice(0, 8), event.kind, relaysToUse.length);
 
         const results = await Promise.allSettled(
-            this.pool.publish(this.relays, event)
+            this.pool.publish(relaysToUse, event)
         );
 
         const successes: string[] = [];
         const failures: Array<{ url: string; error: string }> = [];
 
         results.forEach((result, index) => {
-            const relayUrl = this.relays[index];
+            const relayUrl = relaysToUse[index];
             if (result.status === 'fulfilled') {
                 successes.push(relayUrl);
-                this.updateRelayStatus(relayUrl, true);
+                // Only update status for pool's configured relays
+                if (this.relays.includes(relayUrl)) {
+                    this.updateRelayStatus(relayUrl, true);
+                }
                 this.onPublishSuccess?.(event, relayUrl);
                 debug('published to %s', relayUrl);
             } else {
                 const errorMsg = result.reason?.message ?? String(result.reason);
                 failures.push({ url: relayUrl, error: errorMsg });
-                this.updateRelayStatus(relayUrl, false, errorMsg);
+                // Only update status for pool's configured relays
+                if (this.relays.includes(relayUrl)) {
+                    this.updateRelayStatus(relayUrl, false, errorMsg);
+                }
                 this.onPublishFailure?.(event, relayUrl, result.reason);
                 debug('failed to publish to %s: %s', relayUrl, errorMsg);
             }
@@ -247,7 +268,7 @@ export class RelayPool {
             throw new Error(`Failed to publish to any relay: ${failures.map(f => `${f.url}: ${f.error}`).join(', ')}`);
         }
 
-        debug('published to %d/%d relays', successes.length, this.relays.length);
+        debug('published to %d/%d relays', successes.length, relaysToUse.length);
         return { successes, failures };
     }
 

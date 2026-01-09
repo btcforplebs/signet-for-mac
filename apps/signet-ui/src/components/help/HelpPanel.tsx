@@ -57,7 +57,7 @@ export function HelpPanel() {
         <div className={styles.sectionGroup}>
           <h3 className={styles.sectionTitle}>Getting Started</h3>
 
-          <AccordionItem title="What is Signet?" defaultOpen>
+          <AccordionItem title="What is Signet?">
             <p>
               Signet is a <strong>remote signer</strong> for Nostr. It securely holds your
               private keys and approves signing requests from apps, so your keys never
@@ -71,14 +71,27 @@ export function HelpPanel() {
           </AccordionItem>
 
           <AccordionItem title="Connecting an App">
+            <p>There are two ways to connect a Nostr app:</p>
+
+            <h4 className={styles.subheading}>bunker:// (You initiate)</h4>
             <ol className={styles.stepList}>
-              <li>Go to the <strong>Keys</strong> page and create or select a key</li>
-              <li>Copy the <strong>bunker URI</strong> or scan the <strong>QR code</strong></li>
+              <li>Go to the <strong>Keys</strong> page and select a key</li>
+              <li>Click <strong>Generate bunker URI</strong> to get a one-time connection link</li>
               <li>Paste the URI into your Nostr app's remote signer settings</li>
-              <li>Return to Signet and <strong>approve the connection request</strong></li>
+              <li>The app connects automatically</li>
             </ol>
+
+            <h4 className={styles.subheading}>nostrconnect:// (App initiates)</h4>
+            <ol className={styles.stepList}>
+              <li>In your Nostr app, look for "Connect via remote signer" or similar</li>
+              <li>The app displays a <strong>nostrconnect://</strong> URI or QR code</li>
+              <li>In Signet, click <strong>+</strong> on the Apps page</li>
+              <li>Paste the URI and choose a key and trust level</li>
+              <li>Click <strong>Connect</strong> to complete the handshake</li>
+            </ol>
+
             <p className={styles.hint}>
-              The bunker URI looks like: <code>bunker://npub...?relay=wss://...</code>
+              Both methods create the same secure connection. Use whichever your app supports.
             </p>
           </AccordionItem>
 

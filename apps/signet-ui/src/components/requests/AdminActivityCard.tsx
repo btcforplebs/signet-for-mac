@@ -17,7 +17,7 @@ export function AdminActivityCard({ entry }: AdminActivityCardProps) {
   let summary = '';
   if (entry.eventType === 'key_locked' || entry.eventType === 'key_unlocked') {
     summary = entry.keyName || 'Unknown key';
-  } else if (entry.eventType === 'app_suspended' || entry.eventType === 'app_unsuspended') {
+  } else if (entry.eventType === 'app_connected' || entry.eventType === 'app_suspended' || entry.eventType === 'app_unsuspended') {
     summary = entry.appName || `App #${entry.appId}`;
   } else if (entry.eventType === 'daemon_started') {
     summary = entry.clientVersion ? `v${entry.clientVersion}` : 'Signet daemon';

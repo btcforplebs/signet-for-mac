@@ -541,6 +541,64 @@ docker compose pull
 docker compose up -d --build
 ```
 
+## fail2ban Integration
+
+If you run fail2ban (or similar tools that modify iptables), WebSocket connections can silently die when the conntrack table is flushed. Signet may appear healthy but stop receiving NIP-46 requests.
+
+### The Problem
+
+When fail2ban bans an IP:
+1. iptables rules are updated
+2. The conntrack table may be flushed
+3. Existing WebSocket connections lose their state
+4. Signet's relay connections become unresponsive
+5. Health checks pass (they create new connections) but NIP-46 subscriptions are dead
+
+### Solution: Refresh Hook
+
+Signet provides a `POST /connections/refresh` endpoint that forces all relay connections to reset. Hook this into fail2ban actions:
+
+**Create `/etc/fail2ban/action.d/signet-refresh.local`:**
+
+```ini
+[Definition]
+actionban = curl -s -X POST http://localhost:3000/connections/refresh -H "Authorization: Bearer <token>" || true
+actionunban = curl -s -X POST http://localhost:3000/connections/refresh -H "Authorization: Bearer <token>" || true
+```
+
+**Note:** If `requireAuth: false` (default), you can omit the Authorization header. If auth is enabled, use a valid JWT token or call from localhost where auth may be bypassed.
+
+**Add to your jail configuration (`/etc/fail2ban/jail.local`):**
+
+```ini
+[nginx-http-auth]
+enabled = true
+filter = nginx-http-auth
+logpath = /var/log/nginx/error.log
+maxretry = 3
+action = iptables-multiport[name=nginx, port="http,https", protocol=tcp]
+         signet-refresh
+```
+
+### Alternative: Periodic Refresh
+
+If you can't hook into fail2ban, you can set up a cron job to periodically refresh connections:
+
+```bash
+# Refresh every 4 hours (adjust as needed)
+0 */4 * * * curl -s -X POST http://localhost:3000/connections/refresh
+```
+
+This is less targeted but ensures recovery from any silent connection failure.
+
+### Verifying the Fix
+
+After setting up the hook:
+
+1. Trigger a fail2ban ban manually: `sudo fail2ban-client set <jail> banip 1.2.3.4`
+2. Check Signet logs for "Relay pool reset" message
+3. Verify NIP-46 requests still work
+
 ## Process Supervisor Comparison
 
 | Feature | systemd | runit | PM2 | Docker |

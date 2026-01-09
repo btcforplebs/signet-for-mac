@@ -160,6 +160,42 @@ Get relay connection status.
 
 ---
 
+#### `POST /connections/refresh`
+
+Force reset the relay pool and recreate all WebSocket connections. Use when connections are silently dead (e.g., after fail2ban/iptables changes that flush the conntrack table).
+
+**Authentication:** Required
+**CSRF:** Required
+
+**Request Body:** Empty object `{}`
+
+**Response:**
+```json
+{
+  "ok": true,
+  "message": "Relay pool reset initiated"
+}
+```
+
+**Use Cases:**
+- After fail2ban bans an IP (conntrack table flush kills existing connections)
+- After iptables rule changes
+- When NIP-46 requests mysteriously stop working but health checks pass
+- As a recovery action when the daemon appears healthy but isn't receiving events
+
+**Example (fail2ban hook):**
+```bash
+curl -s -X POST http://localhost:3000/connections/refresh
+```
+
+**Notes:**
+- The pool reset is asynchronous; new connections are established in the background
+- All NIP-46 subscriptions are automatically recreated after the pool resets
+- A `pool-reset` event is emitted internally for dependent services to refresh their state
+- Health checks create new connections and may pass even when existing subscriptions are dead; this endpoint forces a full reset
+
+---
+
 ### Requests
 
 #### `GET /requests`
@@ -692,6 +728,265 @@ Resume a suspended app, allowing signing requests again.
 
 ---
 
+### NostrConnect
+
+#### `POST /nostrconnect`
+
+Connect an app via nostrconnect:// URI. This is an alternative to the bunker:// flow where the app initiates the connection.
+
+**Authentication:** Required
+**CSRF:** Required
+
+**Request Body:**
+```json
+{
+  "uri": "nostrconnect://pubkey?relay=wss://relay.example.com&secret=abc123",
+  "keyName": "main-key",
+  "trustLevel": "reasonable",
+  "description": "Primal"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `uri` | string | Yes | Full nostrconnect:// URI from the app |
+| `keyName` | string | Yes | Key to use for this connection |
+| `trustLevel` | string | Yes | Trust level: `paranoid`, `reasonable`, `full` |
+| `description` | string | No | App name/description |
+
+**URI Components:**
+
+The nostrconnect:// URI contains:
+- **Client pubkey** (path): 64-character hex pubkey of the connecting app
+- **relay** (required): One or more relay URLs for communication
+- **secret** (required): One-time secret for the initial handshake
+- **perms** (optional): Comma-separated permissions the app requests
+- **name** (optional): App name suggested by the client
+- **url** (optional): App's website URL
+
+**Response (Success):**
+```json
+{
+  "ok": true,
+  "appId": 42,
+  "connectResponseSent": true
+}
+```
+
+**Response (Partial Success):**
+```json
+{
+  "ok": true,
+  "appId": 42,
+  "connectResponseSent": false,
+  "connectResponseError": "Failed to publish to relay"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `ok` | boolean | Whether the connection was created |
+| `appId` | number | ID of the newly connected app |
+| `connectResponseSent` | boolean | Whether the ACK was successfully sent to the app via relay |
+| `connectResponseError` | string | Error message if relay notification failed |
+
+**Errors:**
+- `400` - Invalid URI format, missing required fields, or key not active
+- `404` - Key not found
+- `409` - App already connected to this key (returns `errorType: 'already_connected'`)
+
+**Example:**
+```bash
+curl -X POST http://localhost:3000/nostrconnect \
+  -H "Content-Type: application/json" \
+  -H "X-CSRF-Token: <token>" \
+  -b cookies.txt \
+  -d '{
+    "uri": "nostrconnect://abc123...?relay=wss://relay.damus.io&secret=xyz",
+    "keyName": "main-key",
+    "trustLevel": "reasonable",
+    "description": "My Nostr App"
+  }'
+```
+
+**Notes:**
+- The daemon sends a NIP-46 `connect` response to the app via the specified relay(s)
+- If relay notification fails, the connection is still created (partial success)
+- The app may need to retry its connection request if it doesn't receive the ACK
+
+---
+
+### Dead Man's Switch (Inactivity Lock)
+
+The Dead Man's Switch (also called Inactivity Lock) is a security feature that automatically locks all keys and suspends all apps if not reset within a configured timeframe.
+
+#### `GET /dead-man-switch`
+
+Get the current Dead Man's Switch status.
+
+**Authentication:** Required
+
+**Response:**
+```json
+{
+  "enabled": true,
+  "timeframeSec": 604800,
+  "lastResetAt": 1704067200000,
+  "remainingSec": 345600,
+  "panicTriggeredAt": null,
+  "remainingAttempts": 3
+}
+```
+
+**Response Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `enabled` | boolean | Whether the Dead Man's Switch is enabled |
+| `timeframeSec` | number | Configured timeframe in seconds (default: 7 days) |
+| `lastResetAt` | number \| null | Unix timestamp (ms) of last reset |
+| `remainingSec` | number \| null | Seconds remaining until panic triggers |
+| `panicTriggeredAt` | number \| null | Unix timestamp (ms) when panic was triggered, or null if not triggered |
+| `remainingAttempts` | number | Password attempts remaining before permanent lockout |
+
+---
+
+#### `PUT /dead-man-switch`
+
+Enable, disable, or update the Dead Man's Switch timeframe.
+
+**Authentication:** Required
+**CSRF:** Required
+
+**Request Body (Enable):**
+```json
+{
+  "enabled": true,
+  "timeframeSec": 604800
+}
+```
+
+**Request Body (Disable):**
+```json
+{
+  "enabled": false,
+  "keyName": "main-key",
+  "passphrase": "your-passphrase"
+}
+```
+
+**Request Body (Update Timeframe):**
+```json
+{
+  "timeframeSec": 259200,
+  "keyName": "main-key",
+  "passphrase": "your-passphrase"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `enabled` | boolean | For enable/disable | Set to `true` to enable, `false` to disable |
+| `timeframeSec` | number | For enable/update | Timeframe in seconds (min: 1 hour, max: 30 days) |
+| `keyName` | string | For disable/update | Key name for passphrase verification |
+| `passphrase` | string | For disable/update | Passphrase to verify ownership |
+
+**Response:**
+```json
+{
+  "ok": true,
+  "status": {
+    "enabled": true,
+    "timeframeSec": 604800,
+    "remainingSec": 604800,
+    "panicTriggeredAt": null,
+    "remainingAttempts": 3
+  }
+}
+```
+
+**Errors:**
+- `400` - Invalid timeframe (must be between 1 hour and 30 days)
+- `401` - Incorrect passphrase
+- `404` - Key not found
+
+---
+
+#### `POST /dead-man-switch/reset`
+
+Reset the Dead Man's Switch timer. Also clears panic state if triggered.
+
+**Authentication:** Required
+**CSRF:** Required
+
+**Request Body:**
+```json
+{
+  "keyName": "main-key",
+  "passphrase": "your-passphrase"
+}
+```
+
+**Response:**
+```json
+{
+  "ok": true,
+  "status": {
+    "enabled": true,
+    "timeframeSec": 604800,
+    "remainingSec": 604800,
+    "panicTriggeredAt": null,
+    "remainingAttempts": 3
+  }
+}
+```
+
+**Errors:**
+- `400` - Dead Man's Switch is not enabled
+- `401` - Incorrect passphrase
+- `404` - Key not found
+
+---
+
+#### `POST /dead-man-switch/test-panic`
+
+Manually trigger panic mode. This locks all keys and suspends all apps immediately.
+
+**Authentication:** Required
+**CSRF:** Required
+
+**Request Body:**
+```json
+{
+  "keyName": "main-key",
+  "passphrase": "your-passphrase"
+}
+```
+
+**Response:**
+```json
+{
+  "ok": true,
+  "status": {
+    "enabled": true,
+    "panicTriggeredAt": 1704153600000,
+    "remainingAttempts": 3
+  }
+}
+```
+
+**Effects:**
+- All active keys are locked
+- All connected apps are suspended
+- The UI shows a lock screen overlay until recovered
+
+**Errors:**
+- `400` - Dead Man's Switch is not enabled
+- `401` - Incorrect passphrase
+- `404` - Key not found
+
+---
+
 ### Dashboard
 
 #### `GET /dashboard`
@@ -784,6 +1079,9 @@ eventSource.onmessage = (event) => {
 | `key:updated` | Key encryption status changed | `{ keyName: string }` |
 | `stats:updated` | Dashboard stats changed | `{ stats: DashboardStats }` |
 | `relays:updated` | Relay connection status changed | `{ relays: RelayStatusResponse }` |
+| `deadman:panic` | Dead Man's Switch panic triggered | `{ status: DeadManSwitchStatus }` |
+| `deadman:reset` | Dead Man's Switch timer reset | `{ status: DeadManSwitchStatus }` |
+| `deadman:updated` | Dead Man's Switch settings changed | `{ status: DeadManSwitchStatus }` |
 | `ping` | Keep-alive (every 30s) | n/a (comment line) |
 | `admin:event` | Admin action performed | `{ activity: AdminActivityEntry }` |
 
@@ -1106,4 +1404,14 @@ import type {
   TrustLevel,
   ApprovalType,  // 'manual' | 'auto_trust' | 'auto_permission'
 } from '@signet/types';
+
+// Dead Man's Switch status (from api-client.ts)
+interface DeadManSwitchStatus {
+  enabled: boolean;
+  timeframeSec: number;
+  lastResetAt: number | null;
+  remainingSec: number | null;
+  panicTriggeredAt: number | null;
+  remainingAttempts: number;
+}
 ```

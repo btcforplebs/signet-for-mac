@@ -143,6 +143,19 @@ export function registerRequestRoutes(
             logId = log.id;
         }
 
+        // Look up app name from KeyUser if the app was already connected
+        let appName: string | undefined;
+        if (record.keyName && record.remotePubkey) {
+            const keyUser = await prisma.keyUser.findFirst({
+                where: {
+                    keyName: record.keyName,
+                    userPubkey: record.remotePubkey,
+                },
+                select: { description: true },
+            });
+            appName = keyUser?.description ?? undefined;
+        }
+
         // Build activity entry for SSE
         const activity: ActivityEntry = {
             id: logId,
@@ -152,6 +165,7 @@ export function registerRequestRoutes(
             eventKind: record.method === 'sign_event' ? extractEventKind(record.params) : undefined,
             keyName: record.keyName ?? undefined,
             userPubkey: record.remotePubkey ?? undefined,
+            appName,
             autoApproved: false,
             approvalType: undefined,
         };

@@ -64,4 +64,12 @@ export class RelayService {
     public async reconnectAll(): Promise<void> {
         await this.pool.ensureConnected();
     }
+
+    /**
+     * Force reset the relay pool and recreate all connections.
+     * Use when connections are silently dead (e.g., after fail2ban/iptables changes).
+     */
+    public resetPool(): void {
+        this.pool.resetPool();
+    }
 }

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import type { DisplayRequest, DashboardStats, TrustLevel, RelayStatusResponse, MixedActivityEntry, HealthStatus } from '@signet/types';
+import type { DisplayRequest, DashboardStats, TrustLevel, RelayStatusResponse, MixedActivityEntry, HealthStatus, KeyInfo } from '@signet/types';
 import type { UIHealthStatus } from '../../hooks/useHealth.js';
+import type { DeadManSwitchStatus } from '../../lib/api-client.js';
 import { Key } from 'lucide-react';
 import { PageHeader } from '../shared/PageHeader.js';
 import { SkeletonStatCard, SkeletonCard } from '../shared/Skeleton.js';
@@ -18,6 +19,10 @@ interface HomeViewProps {
   health: HealthStatus | null;
   uiStatus: UIHealthStatus;
   relayStatus: RelayStatusResponse | null;
+  deadManSwitchStatus: DeadManSwitchStatus | null;
+  deadManSwitchCountdown: string;
+  deadManSwitchUrgency: 'normal' | 'warning' | 'critical';
+  keys: KeyInfo[];
   passwords: Record<string, string>;
   appNames: Record<string, string>;
   showAutoApproved: boolean;
@@ -30,6 +35,7 @@ interface HomeViewProps {
   onNavigateToKeys: () => void;
   onNavigateToApps: () => void;
   onToggleShowAutoApproved: () => void;
+  onLockNow?: (keyName: string, passphrase: string) => Promise<{ ok: boolean; error?: string }>;
 }
 
 export function HomeView({
@@ -40,6 +46,10 @@ export function HomeView({
   health,
   uiStatus,
   relayStatus,
+  deadManSwitchStatus,
+  deadManSwitchCountdown,
+  deadManSwitchUrgency,
+  keys,
   passwords,
   appNames,
   showAutoApproved,
@@ -52,6 +62,7 @@ export function HomeView({
   onNavigateToKeys,
   onNavigateToApps,
   onToggleShowAutoApproved,
+  onLockNow,
 }: HomeViewProps) {
   const [statusModalOpen, setStatusModalOpen] = useState(false);
 
@@ -112,6 +123,11 @@ export function HomeView({
         health={health}
         uiStatus={uiStatus}
         relayStatus={relayStatus}
+        deadManSwitchStatus={deadManSwitchStatus}
+        deadManSwitchCountdown={deadManSwitchCountdown}
+        deadManSwitchUrgency={deadManSwitchUrgency}
+        keys={keys}
+        onLockNow={onLockNow}
       />
 
       {/* Onboarding - show when no keys exist at all */}

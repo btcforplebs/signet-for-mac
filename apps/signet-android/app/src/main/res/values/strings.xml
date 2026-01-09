@@ -41,4 +41,19 @@
     <string name="alert_new_request_title">New Signing Request</string>
     <string name="alert_new_request_text">%1$s wants to %2$s</string>
     <string name="alert_new_request_text_unknown">New request from %1$s</string>
+
+    <!-- Inactivity lock notifications -->
+    <string name="inactivity_channel_name">Inactivity Lock</string>
+    <string name="inactivity_channel_description">Warnings and alerts for inactivity lock timer</string>
+    <string name="inactivity_warning_title">Inactivity Lock Warning</string>
+    <string name="inactivity_warning_urgent_title">Inactivity Lock - Action Required</string>
+    <string name="inactivity_warning_text">Timer expires in %1$s. Open Signet to reset.</string>
+    <string name="inactivity_panic_title">Keys Locked</string>
+    <string name="inactivity_panic_text">All keys have been locked due to inactivity. Unlock to recover.</string>
+
+    <!-- Service notification status parts -->
+    <string name="notification_status_connected">Connected</string>
+    <string name="notification_status_pending">%d pending</string>
+    <string name="notification_status_locked">LOCKED</string>
+    <string name="notification_status_timer">Timer: %1$s</string>
 </resources>

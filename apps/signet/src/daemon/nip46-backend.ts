@@ -67,6 +67,9 @@ export class Nip46Backend {
     private unsubscribe?: () => void;
     private isRunning = false;
 
+    // Per-app subscriptions for nostrconnect apps with custom relays
+    private readonly appSubscriptions: Map<number, () => void> = new Map();
+
     constructor(config: Nip46BackendConfig) {
         this.keyName = config.keyName;
         this.nsec = config.nsec;
@@ -123,8 +126,89 @@ export class Nip46Backend {
         }
 
         console.log(`[${this.keyName}] Stopping NIP-46 backend`);
+
+        // Clean up main subscription
         this.unsubscribe?.();
+
+        // Clean up all per-app subscriptions
+        for (const [appId, cleanup] of this.appSubscriptions) {
+            debug('[%s] cleaning up app subscription %d', this.keyName, appId);
+            cleanup();
+        }
+        this.appSubscriptions.clear();
+
         this.isRunning = false;
+    }
+
+    /**
+     * Add a subscription for an app's custom relays.
+     * This allows apps connected via nostrconnect:// to send requests
+     * through their specified relays.
+     *
+     * @param appId - The KeyUser ID
+     * @param relays - The app's relay URLs
+     */
+    public addAppSubscription(appId: number, relays: string[]): void {
+        if (!this.subscriptionManager) {
+            debug('[%s] no subscription manager, skipping app subscription', this.keyName);
+            return;
+        }
+
+        // Skip if no custom relays
+        if (!relays || relays.length === 0) {
+            debug('[%s] no relays for app %d, skipping subscription', this.keyName, appId);
+            return;
+        }
+
+        // Skip relays that are already in the pool
+        const poolRelays = new Set(this.pool.getRelays());
+        const uniqueRelays = relays.filter(r => !poolRelays.has(r));
+
+        if (uniqueRelays.length === 0) {
+            debug('[%s] app %d relays already covered by pool, skipping', this.keyName, appId);
+            return;
+        }
+
+        // Clean up existing subscription if any
+        this.removeAppSubscription(appId);
+
+        const subscriptionId = `nip46-${this.keyName}-app-${appId}`;
+        const filter = {
+            kinds: [24133],
+            '#p': [this.pubkey],
+        };
+
+        console.log(`[${this.keyName}] Creating subscription for app ${appId} on ${uniqueRelays.length} custom relay(s)`);
+
+        const cleanup = this.subscriptionManager.subscribe(
+            subscriptionId,
+            filter,
+            (event) => {
+                this.handleEvent(event).catch((err) => {
+                    console.error(`[${this.keyName}] Error handling event from app relay:`, err);
+                });
+            },
+            uniqueRelays
+        );
+
+        this.appSubscriptions.set(appId, cleanup);
+        debug('[%s] created app subscription %d with %d relays', this.keyName, appId, uniqueRelays.length);
+    }
+
+    /**
+     * Remove an app's subscription.
+     * Called when an app is revoked.
+     *
+     * @param appId - The KeyUser ID
+     */
+    public removeAppSubscription(appId: number): void {
+        const cleanup = this.appSubscriptions.get(appId);
+        if (cleanup) {
+            debug('[%s] removing app subscription %d', this.keyName, appId);
+            cleanup();
+            this.appSubscriptions.delete(appId);
+            console.log(`[${this.keyName}] Removed subscription for app ${appId}`);
+        }
     }
 
     /**
@@ -364,6 +448,7 @@ export class Nip46Backend {
 
     /**
      * Encrypt and publish a response.
+     * Publishes to both pool relays and any custom relays the app connected with.
      */
     private async sendEncryptedResponse(remotePubkey: string, response: Nip46Response): Promise<void> {
         // Encrypt with NIP-44
@@ -378,9 +463,47 @@ export class Nip46Backend {
             created_at: Math.floor(Date.now() / 1000),
         }, this.nsec);
 
-        // Publish
         debug('[%s] sending response %s to %s', this.keyName, response.id, npubEncode(remotePubkey));
+
+        // Look up app's custom relays (if connected via nostrconnect)
+        let appRelays: string[] = [];
+        try {
+            const keyUser = await prisma.keyUser.findUnique({
+                where: {
+                    unique_key_user: {
+                        keyName: this.keyName,
+                        userPubkey: remotePubkey,
+                    },
+                },
+                select: { nostrconnectRelays: true },
+            });
+
+            if (keyUser?.nostrconnectRelays) {
+                appRelays = JSON.parse(keyUser.nostrconnectRelays);
+                debug('[%s] found %d custom relays for app', this.keyName, appRelays.length);
+            }
+        } catch (err) {
+            debug('[%s] failed to lookup app relays: %s', this.keyName, (err as Error).message);
+        }
+
+        // Publish to pool relays first
         await this.pool.publish(event);
+
+        // If app has custom relays not in pool, also publish there
+        if (appRelays.length > 0) {
+            const poolRelays = new Set(this.pool.getRelays());
+            const uniqueAppRelays = appRelays.filter(r => !poolRelays.has(r));
+
+            if (uniqueAppRelays.length > 0) {
+                debug('[%s] also publishing to %d app-specific relays', this.keyName, uniqueAppRelays.length);
+                try {
+                    await this.pool.publish(event, uniqueAppRelays);
+                } catch (err) {
+                    // Log but don't fail - we already published to pool relays
+                    debug('[%s] failed to publish to app relays: %s', this.keyName, (err as Error).message);
+                }
+            }
+        }
     }
 
     /**

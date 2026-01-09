@@ -10,6 +10,18 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(packageJson.version),
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Split large vendor libraries into separate chunks
+          'vendor-react': ['react', 'react-dom'],
+          'vendor-qr': ['qrcode.react', 'html5-qrcode'],
+          'vendor-nostr': ['nostr-tools'],
+        },
+      },
+    },
+  },
   server: {
     port: 4174,
     host: '0.0.0.0',
@@ -23,6 +35,10 @@ export default defineConfig({
         changeOrigin: true
       },
       '/connection': {
+        target: 'http://localhost:3000',
+        changeOrigin: true
+      },
+      '/connections': {
         target: 'http://localhost:3000',
         changeOrigin: true
       },
@@ -59,6 +75,14 @@ export default defineConfig({
         changeOrigin: true
       },
       '/health': {
+        target: 'http://localhost:3000',
+        changeOrigin: true
+      },
+      '/nostrconnect': {
+        target: 'http://localhost:3000',
+        changeOrigin: true
+      },
+      '/dead-man-switch': {
         target: 'http://localhost:3000',
         changeOrigin: true
       }

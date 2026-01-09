@@ -1,5 +1,6 @@
 package tech.geektoshi.signet.ui.components
 
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -12,33 +13,52 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Timer
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
+import tech.geektoshi.signet.data.model.DeadManSwitchStatus
 import tech.geektoshi.signet.data.model.HealthStatus
+import tech.geektoshi.signet.data.model.KeyInfo
 import tech.geektoshi.signet.data.model.RelaysResponse
 import tech.geektoshi.signet.ui.theme.BgSecondary
 import tech.geektoshi.signet.ui.theme.BgTertiary
+import tech.geektoshi.signet.ui.theme.BorderDefault
 import tech.geektoshi.signet.ui.theme.Danger
+import tech.geektoshi.signet.ui.theme.SignetPurple
 import tech.geektoshi.signet.ui.theme.Success
 import tech.geektoshi.signet.ui.theme.TextMuted
 import tech.geektoshi.signet.ui.theme.TextPrimary
@@ -63,10 +83,142 @@ fun SystemStatusSheet(
     health: HealthStatus?,
     relays: RelaysResponse?,
     uiStatus: UIHealthStatus,
+    deadManSwitchStatus: DeadManSwitchStatus? = null,
+    keys: List<KeyInfo> = emptyList(),
+    onLockNow: (suspend (keyName: String, passphrase: String) -> Result<Unit>)? = null,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var relaysExpanded by remember { mutableStateOf(false) }
+
+    // Lock Now dialog state
+    var showLockDialog by remember { mutableStateOf(false) }
+    var lockPassphrase by remember { mutableStateOf("") }
+    var lockError by remember { mutableStateOf<String?>(null) }
+    var isLocking by remember { mutableStateOf(false) }
+
+    // Get encrypted keys for passphrase verification
+    val encryptedKeys = remember(keys) { keys.filter { it.isEncrypted } }
+
+    // Lock Now confirmation dialog
+    if (showLockDialog && onLockNow != null) {
+        val firstEncryptedKey = encryptedKeys.firstOrNull()
+
+        AlertDialog(
+            onDismissRequest = {
+                if (!isLocking) {
+                    showLockDialog = false
+                    lockPassphrase = ""
+                    lockError = null
+                }
+            },
+            title = {
+                Text(
+                    text = "Lock All Keys Now",
+                    color = TextPrimary
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = "This will immediately lock all keys and suspend all apps. You will need to enter your passphrase to recover.",
+                        color = Warning,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+
+                    if (firstEncryptedKey != null) {
+                        Text(
+                            text = "Using key: ${firstEncryptedKey.name}",
+                            color = TextMuted,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+
+                    OutlinedTextField(
+                        value = lockPassphrase,
+                        onValueChange = {
+                            lockPassphrase = it
+                            lockError = null
+                        },
+                        label = { Text("Passphrase") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        isError = lockError != null,
+                        supportingText = lockError?.let { { Text(it, color = Danger) } },
+                        enabled = !isLocking,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = SignetPurple,
+                            unfocusedBorderColor = BorderDefault,
+                            focusedLabelColor = SignetPurple,
+                            unfocusedLabelColor = TextMuted,
+                            cursorColor = SignetPurple,
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary,
+                            focusedContainerColor = BgTertiary,
+                            unfocusedContainerColor = BgTertiary
+                        )
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (firstEncryptedKey == null || lockPassphrase.isBlank()) return@Button
+
+                        scope.launch {
+                            isLocking = true
+                            lockError = null
+
+                            val result = onLockNow(firstEncryptedKey.name, lockPassphrase)
+
+                            result.fold(
+                                onSuccess = {
+                                    showLockDialog = false
+                                    lockPassphrase = ""
+                                    Toast.makeText(context, "All keys locked", Toast.LENGTH_SHORT).show()
+                                    onDismiss()
+                                },
+                                onFailure = { e ->
+                                    lockError = e.message ?: "Failed to lock keys"
+                                }
+                            )
+
+                            isLocking = false
+                        }
+                    },
+                    enabled = !isLocking && lockPassphrase.isNotBlank() && firstEncryptedKey != null,
+                    colors = ButtonDefaults.buttonColors(containerColor = Danger)
+                ) {
+                    if (isLocking) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            color = TextPrimary,
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Text("Lock Now")
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showLockDialog = false
+                        lockPassphrase = ""
+                        lockError = null
+                    },
+                    enabled = !isLocking
+                ) {
+                    Text("Cancel", color = TextMuted)
+                }
+            },
+            containerColor = BgSecondary
+        )
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -214,6 +366,61 @@ fun SystemStatusSheet(
                         }
                     }
                 }
+
+                // Inactivity Lock Section (only show when enabled and callback available)
+                if (deadManSwitchStatus?.enabled == true && onLockNow != null && encryptedKeys.isNotEmpty()) {
+                    val isPanicked = deadManSwitchStatus.panicTriggeredAt != null
+
+                    HorizontalDivider(color = TextMuted.copy(alpha = 0.2f))
+
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = BgSecondary,
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = if (isPanicked) Icons.Outlined.Lock else Icons.Outlined.Timer,
+                                    contentDescription = null,
+                                    tint = if (isPanicked) Danger else TextSecondary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Column {
+                                    Text(
+                                        text = "Inactivity Lock",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = TextPrimary
+                                    )
+                                    Text(
+                                        text = if (isPanicked) "LOCKED" else {
+                                            deadManSwitchStatus.remainingSec?.let { formatDuration(it) } ?: "Active"
+                                        },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = if (isPanicked) Danger else TextMuted
+                                    )
+                                }
+                            }
+
+                            if (!isPanicked) {
+                                TextButton(
+                                    onClick = { showLockDialog = true }
+                                ) {
+                                    Text("Lock Now", color = Danger)
+                                }
+                            }
+                        }
+                    }
+                }
             } else {
                 // Offline message
                 Text(
@@ -276,5 +483,21 @@ private fun StatItem(
             style = MaterialTheme.typography.bodyMedium,
             color = TextPrimary
         )
+    }
+}
+
+/**
+ * Format seconds to human-readable duration
+ */
+private fun formatDuration(seconds: Int): String {
+    val days = seconds / 86400
+    val hours = (seconds % 86400) / 3600
+    val minutes = (seconds % 3600) / 60
+
+    return when {
+        days > 0 -> "${days}d ${hours}h"
+        hours > 0 -> "${hours}h ${minutes}m"
+        minutes > 0 -> "${minutes}m"
+        else -> "${seconds}s"
     }
 }

@@ -139,6 +139,38 @@
   border-radius: var(--radius-full);
 }
 
+.navItemRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.navItemRow .navItem {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.navAddButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+  margin-right: var(--space-2);
+}
+
+.navAddButton:hover {
+  background: var(--surface-hover);
+  color: var(--accent);
+}
+
 /* Section */
 .section {
   margin-top: var(--space-4);
@@ -387,6 +419,182 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Inactivity Lock Row */
+.inactivityLockRow {
+  /* Inherits from .navItem */
+}
+
+.inactivityLockCountdown {
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+.inactivityLockBadge {
+  font-size: 10px;
+  font-weight: var(--font-semibold);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--danger);
+  color: white;
+  margin-left: auto;
+}
+
+.inactivityLockWarning {
+  color: var(--warning);
+}
+
+.inactivityLockWarning .navIcon {
+  color: var(--warning);
+}
+
+.inactivityLockWarning .inactivityLockCountdown {
+  color: var(--warning);
+}
+
+.inactivityLockCritical {
+  color: var(--danger);
+  animation: criticalPulse 1s ease-in-out infinite;
+}
+
+.inactivityLockCritical .navIcon {
+  color: var(--danger);
+}
+
+.inactivityLockCritical .inactivityLockCountdown {
+  color: var(--danger);
+}
+
+@keyframes criticalPulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+/* Modal Styles (for Reset Modal) */
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--z-modal);
+  backdrop-filter: blur(2px);
+}
+
+.modal {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  padding: var(--space-6);
+  width: 100%;
+  max-width: 400px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.modalTitle {
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  margin: 0 0 var(--space-2) 0;
+}
+
+.modalDescription {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin: 0 0 var(--space-4) 0;
+}
+
+.formGroup {
+  margin-bottom: var(--space-4);
+}
+
+.formGroup label {
+  display: block;
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-2);
+}
+
+.formGroup input,
+.formGroup select {
+  width: 100%;
+  padding: var(--space-3);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+}
+
+.formGroup input:focus,
+.formGroup select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.formError {
+  padding: var(--space-3);
+  background: var(--danger-muted, rgba(239, 68, 68, 0.1));
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-md);
+  color: var(--danger);
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-4);
+}
+
+.modalActions {
+  display: flex;
+  gap: var(--space-3);
+  justify-content: flex-end;
+  margin-top: var(--space-4);
+}
+
+.modalActions button {
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btnSecondary {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+}
+
+.btnSecondary:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.btnPrimary {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: white;
+}
+
+.btnPrimary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.btnPrimary:disabled,
+.btnSecondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* Bottom Section */

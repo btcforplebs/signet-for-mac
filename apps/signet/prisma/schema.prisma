@@ -28,21 +28,22 @@ model Request {
 }
 
 model KeyUser {
-  id                Int                @id @default(autoincrement())
-  keyName           String
-  userPubkey        String
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @default(now()) @updatedAt
-  revokedAt         DateTime?
-  suspendedAt       DateTime?          // When set, app is suspended and all requests are denied
-  suspendUntil      DateTime?          // If set, app auto-resumes after this time
-  lastUsedAt        DateTime?
-  description       String?
-  trustLevel        String             @default("reasonable") // 'paranoid' | 'reasonable' | 'full'
-  logs              Log[]
-  signingConditions SigningCondition[]
-  Token             Token[]
-  requests          Request[]
+  id                  Int                @id @default(autoincrement())
+  keyName             String
+  userPubkey          String
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @default(now()) @updatedAt
+  revokedAt           DateTime?
+  suspendedAt         DateTime?          // When set, app is suspended and all requests are denied
+  suspendUntil        DateTime?          // If set, app auto-resumes after this time
+  lastUsedAt          DateTime?
+  description         String?
+  trustLevel          String             @default("reasonable") // 'paranoid' | 'reasonable' | 'full'
+  nostrconnectRelays  String?            // JSON array of relay URLs for nostrconnect apps (null for bunker apps)
+  logs                Log[]
+  signingConditions   SigningCondition[]
+  Token               Token[]
+  requests            Request[]
 
   @@unique([keyName, userPubkey], name: "unique_key_user")
   @@index([revokedAt])
@@ -156,4 +157,9 @@ model AdminLog {
 
   @@index([timestamp])
   @@index([eventType])
+}
+
+model Setting {
+  key   String @id
+  value String
 }

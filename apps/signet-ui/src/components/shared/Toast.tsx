@@ -10,6 +10,7 @@ export function Toast() {
 
   const typeClass = toast.type === 'success' ? styles.success
     : toast.type === 'error' ? styles.error
+    : toast.type === 'warning' ? styles.warning
     : styles.notification;
 
   return (

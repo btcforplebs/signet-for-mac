@@ -248,10 +248,10 @@ export function AppsPanel({
           <div className={styles.emptyIcon}>
             <Smartphone size={48} />
           </div>
-          <p>No apps connected yet</p>
-          <button type="button" className={styles.emptyLink} onClick={onNavigateToHelp}>
-            Need help? Learn more <ChevronRight size={14} />
-          </button>
+          <p>No connected apps</p>
+          <p className={styles.emptyHint}>
+            Click + for NostrConnect, or share your key's bunker URI with an app
+          </p>
         </div>
       ) : filteredApps.length === 0 ? (
         <div className={styles.emptyState}>

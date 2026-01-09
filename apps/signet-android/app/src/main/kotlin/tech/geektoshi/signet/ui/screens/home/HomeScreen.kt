@@ -19,6 +19,7 @@ import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Key
+import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.Pause
@@ -54,7 +55,9 @@ import tech.geektoshi.signet.data.api.SignetApiClient
 import tech.geektoshi.signet.data.model.ActivityEntry
 import tech.geektoshi.signet.data.model.DashboardResponse
 import tech.geektoshi.signet.data.model.DashboardStats
+import tech.geektoshi.signet.data.model.DeadManSwitchStatus
 import tech.geektoshi.signet.data.model.HealthStatus
+import tech.geektoshi.signet.data.model.KeyInfo
 import tech.geektoshi.signet.data.model.MixedActivityEntry
 import tech.geektoshi.signet.data.model.PendingRequest
 import tech.geektoshi.signet.data.model.RelaysResponse
@@ -73,6 +76,7 @@ import tech.geektoshi.signet.ui.components.StatusBadge
 import tech.geektoshi.signet.ui.components.pressScale
 import tech.geektoshi.signet.ui.theme.BgSecondary
 import tech.geektoshi.signet.ui.theme.Danger
+import tech.geektoshi.signet.ui.theme.Info
 import tech.geektoshi.signet.ui.theme.SignetPurple
 import tech.geektoshi.signet.ui.theme.Success
 import tech.geektoshi.signet.ui.theme.TextMuted
@@ -102,6 +106,8 @@ fun HomeScreen(
     var pendingRequests by remember { mutableStateOf<List<PendingRequest>>(emptyList()) }
     var relays by remember { mutableStateOf<RelaysResponse?>(null) }
     var health by remember { mutableStateOf<HealthStatus?>(null) }
+    var deadManSwitchStatus by remember { mutableStateOf<DeadManSwitchStatus?>(null) }
+    var keys by remember { mutableStateOf<List<KeyInfo>>(emptyList()) }
     var selectedRequest by remember { mutableStateOf<PendingRequest?>(null) }
     var showStatusSheet by remember { mutableStateOf(false) }
     var refreshCounter by remember { mutableIntStateOf(0) }
@@ -167,6 +173,22 @@ fun HomeScreen(
                         d.copy(activity = listOf(event.activity) + d.activity.take(19))
                     }
                 }
+                is ServerEvent.DeadmanPanic -> {
+                    deadManSwitchStatus = event.status
+                }
+                is ServerEvent.DeadmanReset -> {
+                    deadManSwitchStatus = event.status
+                }
+                is ServerEvent.DeadmanUpdated -> {
+                    deadManSwitchStatus = event.status
+                }
+                is ServerEvent.KeyCreated,
+                is ServerEvent.KeyUnlocked,
+                is ServerEvent.KeyLocked,
+                is ServerEvent.KeyDeleted -> {
+                    // Refresh keys on key changes
+                    refreshCounter++
+                }
                 is ServerEvent.Ping -> {
                     // Heartbeat - ignore
                 }
@@ -192,6 +214,23 @@ fun HomeScreen(
             health = health,
             relays = relays,
             uiStatus = health.toUIStatus(),
+            deadManSwitchStatus = deadManSwitchStatus,
+            keys = keys,
+            onLockNow = { keyName, passphrase ->
+                try {
+                    val client = SignetApiClient(daemonUrl)
+                    val result = client.testDeadManSwitchPanic(keyName, passphrase)
+                    client.close()
+                    if (result.ok) {
+                        result.status?.let { deadManSwitchStatus = it }
+                        Result.success(Unit)
+                    } else {
+                        Result.failure(Exception(result.error ?: "Failed to trigger panic"))
+                    }
+                } catch (e: Exception) {
+                    Result.failure(e)
+                }
+            },
             onDismiss = { showStatusSheet = false }
         )
     }
@@ -200,16 +239,18 @@ fun HomeScreen(
         if (daemonUrl.isNotEmpty()) {
             if (!isRefreshing) isLoading = true
             error = null
+            val client = SignetApiClient(daemonUrl)
             try {
-                val client = SignetApiClient(daemonUrl)
                 dashboard = client.getDashboard()
                 pendingRequests = client.getRequests(status = "pending").requests
                 relays = client.getRelays()
                 health = client.getHealth()
-                client.close()
+                deadManSwitchStatus = client.getDeadManSwitchStatus()
+                keys = client.getKeys().keys
             } catch (e: Exception) {
                 error = e.message ?: "Failed to connect"
             } finally {
+                client.close()
                 isLoading = false
                 isRefreshing = false
             }
@@ -534,12 +575,12 @@ private fun ActivityCard(activity: MixedActivityEntry) {
                         imageVector = getAdminEventIcon(activity.eventType ?: ""),
                         contentDescription = null,
                         modifier = Modifier.size(14.dp),
-                        tint = SignetPurple
+                        tint = Info
                     )
                     Text(
                         text = getAdminEventLabel(activity.eventType ?: ""),
                         style = MaterialTheme.typography.bodySmall,
-                        color = SignetPurple
+                        color = Info
                     )
                 }
 
@@ -610,6 +651,7 @@ private fun getAdminEventIcon(eventType: String): ImageVector {
     return when (eventType) {
         "key_locked" -> Icons.Outlined.Lock
         "key_unlocked" -> Icons.Outlined.LockOpen
+        "app_connected" -> Icons.Outlined.Link
         "app_suspended" -> Icons.Outlined.Pause
         "app_unsuspended" -> Icons.Outlined.PlayArrow
         "daemon_started" -> Icons.Outlined.Power
@@ -624,6 +666,7 @@ private fun getAdminEventLabel(eventType: String): String {
     return when (eventType) {
         "key_locked" -> "Key locked"
         "key_unlocked" -> "Key unlocked"
+        "app_connected" -> "App connected"
         "app_suspended" -> "App suspended"
         "app_unsuspended" -> "App resumed"
         "daemon_started" -> "Daemon started"

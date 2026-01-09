@@ -58,12 +58,13 @@ import tech.geektoshi.signet.ui.theme.SignetPurple
 import tech.geektoshi.signet.ui.theme.TextMuted
 import tech.geektoshi.signet.ui.theme.TextPrimary
 import tech.geektoshi.signet.ui.theme.TextSecondary
+import tech.geektoshi.signet.ui.theme.Warning
 import java.util.concurrent.Executors
 
 /**
  * QR Code scanner bottom sheet.
  *
- * @param onScanned Called when a QR code is successfully scanned
+ * @param onScanned Called when a valid nostrconnect:// QR code is scanned
  * @param onDismiss Called when the sheet is dismissed
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -81,6 +82,9 @@ fun QRScannerSheet(
                 PackageManager.PERMISSION_GRANTED
         )
     }
+
+    // Feedback for invalid QR codes
+    var invalidQRMessage by remember { mutableStateOf<String?>(null) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -143,18 +147,31 @@ fun QRScannerSheet(
                         onQRCodeScanned = { url ->
                             onScanned(url)
                             onDismiss()
+                        },
+                        onInvalidQR = { message ->
+                            invalidQRMessage = message
                         }
                     )
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                Text(
-                    text = "Point camera at the QR code shown on your server",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary,
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                )
+                // Show invalid QR feedback or hint text
+                if (invalidQRMessage != null) {
+                    Text(
+                        text = invalidQRMessage!!,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Warning,
+                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                    )
+                } else {
+                    Text(
+                        text = "Point camera at the QR code shown on your server",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextSecondary,
+                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                    )
+                }
             } else {
                 // Permission not granted
                 Column(
@@ -209,7 +226,8 @@ fun QRScannerSheet(
 @Composable
 @androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
 private fun CameraPreview(
-    onQRCodeScanned: (String) -> Unit
+    onQRCodeScanned: (String) -> Unit,
+    onInvalidQR: (String) -> Unit
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -266,9 +284,22 @@ private fun CameraPreview(
                                     if (barcode.valueType == Barcode.TYPE_URL ||
                                         barcode.valueType == Barcode.TYPE_TEXT) {
                                         barcode.rawValue?.let { value ->
-                                            if (!hasScanned && value.startsWith("http")) {
-                                                hasScanned = true
-                                                onQRCodeScanned(value)
+                                            if (!hasScanned) {
+                                                when {
+                                                    value.startsWith("nostrconnect://") -> {
+                                                        hasScanned = true
+                                                        onQRCodeScanned(value)
+                                                    }
+                                                    value.startsWith("bunker://") -> {
+                                                        onInvalidQR("bunker:// URIs are not supported here. Use nostrconnect:// instead.")
+                                                    }
+                                                    value.startsWith("http") -> {
+                                                        onInvalidQR("This is a web URL, not a nostrconnect:// URI")
+                                                    }
+                                                    else -> {
+                                                        onInvalidQR("Expected nostrconnect:// URI")
+                                                    }
+                                                }
                                             }
                                         }
                                     }

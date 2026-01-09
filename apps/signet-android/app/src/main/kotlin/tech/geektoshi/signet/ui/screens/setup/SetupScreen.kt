@@ -210,10 +210,9 @@ fun SetupScreen(
                             scope.launch {
                                 isConnecting = true
                                 error = null
+                                val client = SignetApiClient(url)
                                 try {
-                                    val client = SignetApiClient(url)
                                     val reachable = client.healthCheck()
-                                    client.close()
                                     if (reachable) {
                                         settingsRepository.setDaemonUrl(url)
                                         onSetupComplete()
@@ -223,6 +222,7 @@ fun SetupScreen(
                                 } catch (e: Exception) {
                                     error = "Connection failed: ${e.message ?: "Unknown error"}"
                                 } finally {
+                                    client.close()
                                     isConnecting = false
                                 }
                             }

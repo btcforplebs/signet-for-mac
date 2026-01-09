@@ -183,6 +183,11 @@ export async function apiDelete<T>(path: string, body?: unknown): Promise<T> {
   return response.json();
 }
 
+export async function apiPut<T>(path: string, body?: unknown): Promise<T> {
+  const response = await mutationRequest(path, 'PUT', body);
+  return response.json();
+}
+
 /**
  * Generate a one-time connection token for a key.
  * Returns a bunker URI with a token that expires in 5 minutes and can only be used once.
@@ -225,4 +230,121 @@ export async function unsuspendApp(appId: number): Promise<{
   error?: string;
 }> {
   return apiPost(`/apps/${appId}/unsuspend`);
+}
+
+/**
+ * Permission requested by a nostrconnect client.
+ */
+export interface NostrconnectPermission {
+  method: string;
+  kind?: number;
+}
+
+/**
+ * Connect to an app via nostrconnect:// URI.
+ */
+export async function connectViaNostrconnect(params: {
+  uri: string;
+  keyName: string;
+  trustLevel: 'paranoid' | 'reasonable' | 'full';
+  description?: string;
+}): Promise<{
+  ok: boolean;
+  appId?: number;
+  clientPubkey?: string;
+  relays?: string[];
+  connectResponseSent?: boolean;
+  connectResponseError?: string;
+  error?: string;
+  errorType?: string;
+}> {
+  return apiPost('/nostrconnect', params);
+}
+
+// Dead Man's Switch types
+export interface DeadManSwitchStatus {
+  enabled: boolean;
+  timeframeSec: number;
+  lastResetAt: number | null;
+  remainingSec: number | null;
+  panicTriggeredAt: number | null;
+  remainingAttempts: number;
+}
+
+/**
+ * Get Dead Man's Switch status.
+ */
+export async function getDeadManSwitchStatus(): Promise<DeadManSwitchStatus> {
+  return apiGet('/dead-man-switch');
+}
+
+/**
+ * Enable the Dead Man's Switch.
+ */
+export async function enableDeadManSwitch(timeframeSec?: number): Promise<{
+  ok: boolean;
+  status: DeadManSwitchStatus;
+  error?: string;
+}> {
+  return apiPut('/dead-man-switch', { enabled: true, timeframeSec });
+}
+
+/**
+ * Disable the Dead Man's Switch.
+ */
+export async function disableDeadManSwitch(keyName: string, passphrase: string): Promise<{
+  ok: boolean;
+  status: DeadManSwitchStatus;
+  error?: string;
+  remainingAttempts?: number;
+}> {
+  return apiPut('/dead-man-switch', {
+    enabled: false,
+    keyName,
+    passphrase,
+  });
+}
+
+/**
+ * Update Dead Man's Switch timeframe.
+ */
+export async function updateDeadManSwitchTimeframe(
+  keyName: string,
+  passphrase: string,
+  timeframeSec: number
+): Promise<{
+  ok: boolean;
+  status: DeadManSwitchStatus;
+  error?: string;
+  remainingAttempts?: number;
+}> {
+  return apiPut('/dead-man-switch', {
+    timeframeSec,
+    keyName,
+    passphrase,
+  });
+}
+
+/**
+ * Reset the Dead Man's Switch timer.
+ */
+export async function resetDeadManSwitch(keyName: string, passphrase: string): Promise<{
+  ok: boolean;
+  status: DeadManSwitchStatus;
+  error?: string;
+  remainingAttempts?: number;
+}> {
+  return apiPost('/dead-man-switch/reset', { keyName, passphrase });
+}
+
+/**
+ * Test the panic functionality (for testing).
+ */
+export async function testDeadManSwitchPanic(keyName: string, passphrase: string): Promise<{
+  ok: boolean;
+  status: DeadManSwitchStatus;
+  error?: string;
+  remainingAttempts?: number;
+}> {
+  return apiPost('/dead-man-switch/test-panic', { keyName, passphrase });
 }

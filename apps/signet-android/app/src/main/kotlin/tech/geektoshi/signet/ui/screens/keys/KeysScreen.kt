@@ -19,10 +19,9 @@ import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -119,41 +118,24 @@ fun KeysScreen() {
         if (daemonUrl.isNotEmpty()) {
             if (!isRefreshing) isLoading = true
             error = null
+            val client = SignetApiClient(daemonUrl)
             try {
-                val client = SignetApiClient(daemonUrl)
                 keys = client.getKeys().keys
-                client.close()
             } catch (e: Exception) {
                 error = e.message ?: "Failed to connect"
             } finally {
+                client.close()
                 isLoading = false
                 isRefreshing = false
             }
         }
     }
 
-    Scaffold(
-        floatingActionButton = {
-            if (!isLoading && error == null) {
-                FloatingActionButton(
-                    onClick = { showCreateKey = true },
-                    containerColor = SignetPurple
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "Create Key",
-                        tint = TextPrimary
-                    )
-                }
-            }
-        },
-        containerColor = MaterialTheme.colorScheme.background
-    ) { paddingValues ->
+    Box(modifier = Modifier.fillMaxSize()) {
         if (isLoading) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(paddingValues)
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
@@ -167,14 +149,13 @@ fun KeysScreen() {
                 SkeletonKeyCard()
                 SkeletonKeyCard()
             }
-            return@Scaffold
+            return@Box
         }
 
         if (error != null) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(paddingValues)
                     .padding(16.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -192,7 +173,7 @@ fun KeysScreen() {
                     )
                 }
             }
-            return@Scaffold
+            return@Box
         }
 
         PullToRefreshBox(
@@ -200,8 +181,7 @@ fun KeysScreen() {
             onRefresh = {
                 isRefreshing = true
                 refreshCounter++
-            },
-            modifier = Modifier.padding(paddingValues)
+            }
         ) {
             LazyColumn(
                 modifier = Modifier
@@ -210,11 +190,26 @@ fun KeysScreen() {
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 item {
-                    Text(
-                        text = "Keys",
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Keys",
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                        IconButton(
+                            onClick = { showCreateKey = true }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "Create Key",
+                                tint = SignetPurple
+                            )
+                        }
+                    }
                     Spacer(modifier = Modifier.height(8.dp))
                 }
 

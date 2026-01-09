@@ -1,5 +1,74 @@
 # Changelog
 
+## [1.5.0]
+
+### Added
+- **Unified Connect App modal**: Two tabs for both connection methods in one place
+  - **Bunker URI tab**: Generate and share bunker URIs with QR code, expiry countdown, copy button
+  - **NostrConnect tab**: Paste or scan nostrconnect:// URIs from apps
+  - Web UI: QR code scanning via camera (uses html5-qrcode library)
+  - Android: QR code scanning via camera (existing ML Kit integration)
+  - Both platforms support paste-from-clipboard for quick URI entry
+  - Parses and validates URI components (client pubkey, relays, secret, permissions)
+  - Shows app name, client info, and requested permissions before connecting
+  - Trust level selection during connection
+- New API endpoint: `POST /nostrconnect` for connecting via nostrconnect:// URI
+- New API endpoint: `POST /connections/refresh` for forcing relay pool reset when connections are silently dead
+- Documentation: Added fail2ban integration guide to DEPLOYMENT.md for recovering from silent WebSocket connection failures
+- **Per-app relay subscriptions**: NIP-46 spec-compliant relay handling for nostrconnect apps
+  - Apps connected via nostrconnect:// can use their own relays for NIP-46 requests
+  - Responses are published to both daemon's relays and the app's specified relays
+  - Subscriptions are automatically cleaned up when apps are revoked
+- **Inactivity Lock in System Status**: Both platforms now show lock status and "Lock Now" button
+  - Web UI: System Status modal shows countdown timer with urgency coloring (normal/warning/critical)
+  - Web UI: "Lock Now" button triggers passphrase confirmation dialog
+  - Android: System Status sheet shows countdown timer and Lock Now functionality
+  - Key selector shown when multiple active keys exist
+- **Activity logging for nostrconnect connections**: Apps connected via nostrconnect:// now appear in Activity
+  - New `app_connected` admin event logged when connecting via nostrconnect:// URI
+  - Displays in Recent widget and Activity page with Link icon
+  - Shows app name, key name, and connection source (web UI or Android)
+  - Provides visibility parity with bunker:// connections which already logged activity
+
+### Improved
+- Web UI: Bundle code splitting for faster initial load
+  - Vendor chunks for React, QR libraries, and nostr-tools
+  - QR scanner lazy-loaded only when needed
+- Empty state messaging now explains both connection methods:
+  - "Tap/Click + for NostrConnect, or share your key's bunker URI with an app"
+- Permissions vs trust level clarification in Connect App modal/sheet:
+  - Added hint text: "These are what the app says it needs. Your trust level controls what actually gets auto-approved."
+- Partial success handling: Shows warning when app is connected but relay notification failed
+- Better duplicate app detection with clearer error message
+- **Android Settings page condensed**:
+  - Trust level selection now uses dropdown instead of full-height rows
+  - App Lock timeout selection now uses inline dropdown
+  - App Lock and Inactivity Lock merged into single "Security" card
+  - Removed Test Panic button (functionality moved to System Status sheet)
+- **Android Inactivity Lock screen**: Now allows key selection when multiple locked keys exist
+
+### Fixed
+- Android: Key state changes (lock/unlock) now properly refresh available keys in Connect App sheet
+- Android: Activity page filter tabs now scroll horizontally on narrow screens
+- Android: Admin event badges and text now use blue to match web UI
+- Web UI: Key selection resets when selected key becomes unavailable
+- QR scanner feedback for invalid codes (bunker:// URIs, web URLs, other non-nostrconnect content)
+- Relay URL validation catches malformed URLs before connection attempt
+- Android: Fixed memory leak in SignetNavHost where API client wasn't closed on URL change
+- Android: Fixed API client resource leak in 5 screens (HomeScreen, ActivityScreen, AppsScreen, KeysScreen, SetupScreen) - client now closed in finally block
+- Daemon: Denied requests now include app name in activity feed (previously only showed npub)
+- Daemon: Fixed silent WebSocket connection failures causing NIP-46 subscriptions to stop working (#28)
+  - Health check now recreates actual managed subscriptions instead of throwaway ping subscriptions
+  - Each health check both tests AND refreshes one subscription (round-robin rotation)
+  - Guarantees all subscriptions get fresh connections every N×90s (where N = number of keys)
+  - Previously, health checks could pass while actual NIP-46 subscriptions remained dead on stale connections
+
+### Security
+- Daemon logs warning at startup when CORS wildcard origin (*) is configured (fine for testing, but not production)
+- Config file permissions now set to 0600 (owner read/write only) after creation
+
+---
+
 ## [1.4.0]
 
 ### Added

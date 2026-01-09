@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { PendingRequest, ConnectedApp, DashboardStats, KeyInfo, RelayStatusResponse, ActivityEntry, AdminActivityEntry } from '@signet/types';
+import type { DeadManSwitchStatus } from '../lib/api-client.js';
 
 /**
  * Server-sent event types matching the backend event-service.ts
@@ -24,6 +25,9 @@ export type ServerEvent =
   | { type: 'stats:updated'; stats: DashboardStats }
   | { type: 'relays:updated'; relays: RelayStatusResponse }
   | { type: 'admin:event'; activity: AdminActivityEntry }
+  | { type: 'deadman:panic'; status: DeadManSwitchStatus }
+  | { type: 'deadman:reset'; status: DeadManSwitchStatus }
+  | { type: 'deadman:updated'; status: DeadManSwitchStatus }
   | { type: 'ping' };
 
 export type ServerEventCallback = (event: ServerEvent) => void;

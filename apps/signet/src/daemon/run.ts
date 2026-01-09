@@ -22,6 +22,9 @@ import {
     emitCurrentStats,
     getConnectionTokenService,
     AdminCommandService,
+    initNostrconnectService,
+    initDeadManSwitchService,
+    type DeadManSwitchService,
 } from './services/index.js';
 import { requestRepository, logRepository } from './repositories/index.js';
 import { adminLogRepository } from './repositories/admin-log-repository.js';
@@ -228,6 +231,7 @@ class Daemon {
     private readonly publishLogger: PublishLogger;
     private readonly eventService: EventService;
     private readonly adminCommandService?: AdminCommandService;
+    private readonly deadManSwitchService: DeadManSwitchService;
     private readonly backends: Map<string, Nip46Backend> = new Map();
     private httpServer?: HttpServer;
     private lastPoolReset: Date | null = null;
@@ -293,6 +297,36 @@ class Daemon {
                 daemonVersion,
             });
         }
+
+        // Initialize dead man's switch service
+        this.deadManSwitchService = initDeadManSwitchService({
+            keyService: this.keyService,
+            appService: this.appService,
+            daemonVersion,
+            // Warning DM callback will be set up after admin command service starts
+        });
+
+        // Initialize nostrconnect service for client-initiated connections
+        const nostrconnectService = initNostrconnectService({
+            keyService: this.keyService,
+        });
+
+        // Wire up per-app subscription callbacks
+        nostrconnectService.setOnAppConnected((keyName, appId, relays) => {
+            const backend = this.backends.get(keyName);
+            if (backend) {
+                backend.addAppSubscription(appId, relays);
+            } else {
+                console.log(`[nostrconnect] Warning: No backend for key "${keyName}", cannot create subscription`);
+            }
+        });
+
+        nostrconnectService.setOnAppRevoked((keyName, appId) => {
+            const backend = this.backends.get(keyName);
+            if (backend) {
+                backend.removeAppSubscription(appId);
+            }
+        });
     }
 
     public async start(): Promise<void> {
@@ -347,6 +381,9 @@ class Daemon {
         if (this.adminCommandService) {
             this.adminCommandService.start();
         }
+
+        // Start dead man's switch service
+        await this.deadManSwitchService.start();
 
         this.startCleanupTasks();
 

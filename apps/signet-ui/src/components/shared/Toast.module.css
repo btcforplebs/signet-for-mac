@@ -45,6 +45,11 @@
   color: white;
 }
 
+.warning {
+  background: var(--warning);
+  color: white;
+}
+
 .notification {
   background: var(--accent);
   color: white;

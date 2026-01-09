@@ -5,33 +5,35 @@ import type { Event } from 'nostr-tools/pure';
 const debug = createDebug('signet:subscription-manager');
 
 // How often to run the health check loop
-const HEALTH_CHECK_INTERVAL_MS = 60 * 1000; // 60 seconds
+const HEALTH_CHECK_INTERVAL_MS = 90 * 1000; // 90 seconds
 
-// How long to wait for a ping response before considering connection dead
-const PING_TIMEOUT_MS = 10 * 1000; // 10 seconds
+// How long to wait for EOSE when recreating a subscription
+const RECREATION_TIMEOUT_MS = 10 * 1000; // 10 seconds
 
 // Debounce subscription restarts to avoid rapid-fire restarts
 const RESTART_DEBOUNCE_MS = 2000; // 2 seconds
 
 // Fallback sleep detection: if health check interval exceeds this, assume system slept
 // This is a backup in case RelayPool's heartbeat doesn't fire after long sleep
-const SLEEP_DETECTION_THRESHOLD_MS = HEALTH_CHECK_INTERVAL_MS * 3; // 3 minutes
+const SLEEP_DETECTION_THRESHOLD_MS = HEALTH_CHECK_INTERVAL_MS * 3; // 4.5 minutes (3x interval)
 
 export interface ManagedSubscription {
     id: string;
     filter: SubscriptionFilter;
     onEvent: (event: Event) => void;
     cleanup?: () => void;
+    relays?: string[];  // Custom relays for this subscription (defaults to pool relays)
 }
 
 export interface SubscriptionManagerConfig {
     pool: RelayPool;
     healthCheckInterval?: number;
-    pingTimeout?: number;
+    recreationTimeout?: number;
 }
 
 type SubscriptionManagerEventType =
     | 'subscription-restarted'
+    | 'subscription-refreshed'
     | 'health-check-failed'
     | 'health-check-passed';
 
@@ -42,9 +44,16 @@ type SubscriptionManagerListener = (event: { type: SubscriptionManagerEventType;
  *
  * Features:
  * - Listens for pool-reset events and recreates subscriptions
- * - Periodic ping-based health checks
- * - Automatic subscription restart on failure
+ * - Periodic health checks that rotate through subscriptions, recreating one per check
+ * - Each health check both tests AND refreshes the subscription (test IS the fix)
+ * - Automatic full restart on failure
  * - Debounced restarts to avoid rapid-fire reconnections
+ *
+ * Health check strategy:
+ * Instead of creating throwaway ping subscriptions (which may use different connections),
+ * we rotate through actual managed subscriptions, closing and recreating each one.
+ * If recreation succeeds (EOSE received), that subscription is now on a fresh connection.
+ * This guarantees all subscriptions get refreshed over time, regardless of silent failures.
  *
  * Note: Sleep/wake detection is handled by RelayPool, which emits 'pool-reset'
  * events when the system wakes from sleep.
@@ -52,7 +61,7 @@ type SubscriptionManagerListener = (event: { type: SubscriptionManagerEventType;
 export class SubscriptionManager {
     private readonly pool: RelayPool;
     private readonly healthCheckInterval: number;
-    private readonly pingTimeout: number;
+    private readonly recreationTimeout: number;
 
     private readonly subscriptions: Map<string, ManagedSubscription> = new Map();
     private readonly listeners: Set<SubscriptionManagerListener> = new Set();
@@ -63,11 +72,12 @@ export class SubscriptionManager {
     private pendingRestart = false;
     private poolListenerCleanup?: () => void;
     private lastHealthCheck: number = 0;
+    private healthCheckIndex: number = 0;  // Round-robin index for subscription rotation
 
     constructor(config: SubscriptionManagerConfig) {
         this.pool = config.pool;
         this.healthCheckInterval = config.healthCheckInterval ?? HEALTH_CHECK_INTERVAL_MS;
-        this.pingTimeout = config.pingTimeout ?? PING_TIMEOUT_MS;
+        this.recreationTimeout = config.recreationTimeout ?? RECREATION_TIMEOUT_MS;
     }
 
     /**
@@ -138,17 +148,23 @@ export class SubscriptionManager {
     /**
      * Register a subscription to be managed.
      * The subscription will be automatically restarted if the connection fails.
+     *
+     * @param id - Unique subscription ID
+     * @param filter - Filter for matching events
+     * @param onEvent - Callback for each matching event
+     * @param relays - Optional custom relays (defaults to pool's configured relays)
      */
     public subscribe(
         id: string,
         filter: SubscriptionFilter,
-        onEvent: (event: Event) => void
+        onEvent: (event: Event) => void,
+        relays?: string[]
     ): () => void {
         // Close existing subscription with same ID
         this.unsubscribe(id);
 
-        // Create the subscription
-        const cleanup = this.pool.subscribe(filter, onEvent, id);
+        // Create the subscription (pass custom relays if provided)
+        const cleanup = this.pool.subscribe(filter, onEvent, id, undefined, relays);
 
         // Track it
         const managed: ManagedSubscription = {
@@ -156,10 +172,11 @@ export class SubscriptionManager {
             filter,
             onEvent,
             cleanup,
+            relays,
         };
         this.subscriptions.set(id, managed);
 
-        debug('registered managed subscription %s', id);
+        debug('registered managed subscription %s%s', id, relays ? ` on ${relays.length} custom relays` : '');
 
         // Return cleanup function
         return () => this.unsubscribe(id);
@@ -200,8 +217,8 @@ export class SubscriptionManager {
     }
 
     /**
-     * Run a ping-based health check by querying for events.
-     * If we don't get an EOSE within the timeout, assume connection is dead.
+     * Run health check by recreating one subscription (round-robin).
+     * This tests the actual subscription path AND refreshes the connection.
      * Also includes fallback sleep detection in case RelayPool's heartbeat didn't fire.
      */
     private async runHealthCheck(): Promise<void> {
@@ -216,46 +233,67 @@ export class SubscriptionManager {
             console.log(`System wake detected via health check (slept ~${sleepDuration}s), resetting pool`);
             this.pool.resetPool();
             // Pool reset will emit 'pool-reset' event, which triggers subscription restart
-            // No need to continue with ping check - subscriptions will be recreated
+            // No need to continue with check - subscriptions will be recreated
             return;
         }
 
-        console.log(`Running relay health check (${this.subscriptions.size} subscriptions)...`);
         if (this.subscriptions.size === 0) {
             debug('no subscriptions to health check');
             return;
         }
 
-        debug('running health check');
+        // Get subscription to refresh (round-robin)
+        const subscriptionIds = Array.from(this.subscriptions.keys());
+        const currentIndex = this.healthCheckIndex % subscriptionIds.length;
+        const targetId = subscriptionIds[currentIndex];
+        this.healthCheckIndex = (this.healthCheckIndex + 1) % subscriptionIds.length;
+
+        console.log(`Health check: refreshing subscription "${targetId}" (${currentIndex + 1}/${subscriptionIds.length})...`);
 
         try {
-            const healthy = await this.pingRelays();
-            if (healthy) {
-                console.log('Relay health check passed (EOSE received)');
+            const success = await this.refreshOneSubscription(targetId);
+            if (success) {
+                console.log(`Health check passed: "${targetId}" refreshed successfully`);
                 this.pool.reportHealthCheckSuccess();
-                this.emit({ type: 'health-check-passed' });
+                this.emit({ type: 'health-check-passed', data: { subscriptionId: targetId } });
+                this.emit({ type: 'subscription-refreshed', data: { subscriptionId: targetId } });
             } else {
-                console.log('Relay health check FAILED (no EOSE), scheduling subscription refresh');
+                console.log(`Health check FAILED: "${targetId}" did not receive EOSE, resetting all subscriptions`);
                 const poolReset = this.pool.reportHealthCheckFailure();
-                this.emit({ type: 'health-check-failed' });
-                // Always restart subscriptions - if pool was reset, subscriptions need recreating
+                this.emit({ type: 'health-check-failed', data: { subscriptionId: targetId } });
+                // If one subscription fails to recreate, something is wrong - restart all
                 this.scheduleRestart(poolReset ? 'pool-reset' : 'health-check-failed');
             }
         } catch (error) {
-            console.log(`Relay health check error: ${(error as Error).message}, scheduling subscription refresh`);
+            console.log(`Health check error on "${targetId}": ${(error as Error).message}, resetting all subscriptions`);
             const poolReset = this.pool.reportHealthCheckFailure();
-            this.emit({ type: 'health-check-failed', data: { error: (error as Error).message } });
+            this.emit({ type: 'health-check-failed', data: { subscriptionId: targetId, error: (error as Error).message } });
             this.scheduleRestart(poolReset ? 'pool-reset' : 'health-check-error');
         }
     }
 
     /**
-     * Ping relays by creating a temporary subscription and waiting for EOSE.
-     * Returns true only if we actually receive an EOSE response from at least one relay.
+     * Refresh a single subscription by closing and recreating it.
+     * Returns true if the recreated subscription receives EOSE within timeout.
+     * This tests the actual subscription path - if it works, the subscription is now fresh.
      */
-    private pingRelays(): Promise<boolean> {
+    private refreshOneSubscription(subscriptionId: string): Promise<boolean> {
         return new Promise((resolve) => {
-            const pingId = `ping-${Date.now()}`;
+            const managed = this.subscriptions.get(subscriptionId);
+            if (!managed) {
+                debug('subscription %s not found, cannot refresh', subscriptionId);
+                resolve(false);
+                return;
+            }
+
+            // Store subscription config before closing
+            const { filter, onEvent, relays } = managed;
+
+            // Close existing subscription
+            managed.cleanup?.();
+            this.subscriptions.delete(subscriptionId);
+            debug('closed subscription %s for refresh', subscriptionId);
+
             let resolved = false;
             let gotEose = false;
 
@@ -263,37 +301,42 @@ export class SubscriptionManager {
                 if (!resolved) {
                     resolved = true;
                     clearTimeout(timeout);
-                    cleanup();
-                    debug('ping result: %s (gotEose=%s)', success, gotEose);
+                    debug('refresh result for %s: %s (gotEose=%s)', subscriptionId, success, gotEose);
                     resolve(success);
                 }
             };
 
-            // Set timeout - if we don't get EOSE in time, consider it failed
+            // Set timeout - if we don't get EOSE, the recreation failed
             const timeout = setTimeout(() => {
-                debug('ping timeout - no EOSE received');
+                debug('refresh timeout for %s - no EOSE received', subscriptionId);
+                // The subscription was removed but recreation failed
+                // We'll return false and trigger a full restart which will recreate everything
                 finish(false);
-            }, this.pingTimeout);
+            }, this.recreationTimeout);
 
-            // Create a subscription that will immediately get EOSE
-            // Query for events with an impossible filter (future timestamp)
-            // The onEose callback is called when at least one relay responds
+            // Recreate the subscription with EOSE callback
             const cleanup = this.pool.subscribe(
-                {
-                    kinds: [0],
-                    since: Math.floor(Date.now() / 1000) + 86400 * 365, // 1 year in future
-                    limit: 1,
-                },
+                filter,
+                onEvent,
+                subscriptionId,
                 () => {
-                    // We don't expect any events, but handle if we get one
-                },
-                pingId,
-                () => {
-                    // EOSE callback - at least one relay responded
+                    // EOSE callback - subscription is working on fresh connection
                     gotEose = true;
                     finish(true);
-                }
+                },
+                relays
             );
+
+            // Store the recreated subscription
+            this.subscriptions.set(subscriptionId, {
+                id: subscriptionId,
+                filter,
+                onEvent,
+                cleanup,
+                relays,
+            });
+
+            debug('recreated subscription %s, waiting for EOSE', subscriptionId);
         });
     }
 
@@ -340,6 +383,7 @@ export class SubscriptionManager {
                 id: managed.id,
                 filter: managed.filter,
                 onEvent: managed.onEvent,
+                relays: managed.relays,  // Preserve custom relays
             });
         }
 
@@ -352,14 +396,14 @@ export class SubscriptionManager {
         // Brief pause to let connections settle
         await new Promise((resolve) => setTimeout(resolve, 500));
 
-        // Recreate all subscriptions
+        // Recreate all subscriptions (with their custom relays if any)
         for (const sub of toRestart) {
-            const cleanup = this.pool.subscribe(sub.filter, sub.onEvent, sub.id);
+            const cleanup = this.pool.subscribe(sub.filter, sub.onEvent, sub.id, undefined, sub.relays);
             this.subscriptions.set(sub.id, {
                 ...sub,
                 cleanup,
             });
-            debug('restarted subscription %s', sub.id);
+            debug('restarted subscription %s%s', sub.id, sub.relays ? ` on ${sub.relays.length} custom relays` : '');
         }
 
         console.log(`Restarted ${count} subscription(s) successfully`);

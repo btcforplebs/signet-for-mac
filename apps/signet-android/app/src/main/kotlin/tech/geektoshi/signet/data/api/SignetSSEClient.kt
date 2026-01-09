@@ -2,6 +2,7 @@ package tech.geektoshi.signet.data.api
 
 import tech.geektoshi.signet.data.model.ActivityEntry
 import tech.geektoshi.signet.data.model.DashboardStats
+import tech.geektoshi.signet.data.model.DeadManSwitchStatus
 import tech.geektoshi.signet.data.model.MixedActivityEntry
 import tech.geektoshi.signet.data.model.PendingRequest
 import io.ktor.client.HttpClient
@@ -95,6 +96,12 @@ sealed class ServerEvent {
     ) : ServerEvent()
 
     @Serializable
+    data class KeyLocked(
+        val type: String = "key:locked",
+        val keyName: String
+    ) : ServerEvent()
+
+    @Serializable
     data class KeyDeleted(
         val type: String = "key:deleted",
         val keyName: String
@@ -117,6 +124,24 @@ sealed class ServerEvent {
     data class AdminEvent(
         val type: String = "admin:event",
         val activity: MixedActivityEntry
+    ) : ServerEvent()
+
+    @Serializable
+    data class DeadmanPanic(
+        val type: String = "deadman:panic",
+        val status: DeadManSwitchStatus
+    ) : ServerEvent()
+
+    @Serializable
+    data class DeadmanReset(
+        val type: String = "deadman:reset",
+        val status: DeadManSwitchStatus
+    ) : ServerEvent()
+
+    @Serializable
+    data class DeadmanUpdated(
+        val type: String = "deadman:updated",
+        val status: DeadManSwitchStatus
     ) : ServerEvent()
 
     @Serializable
@@ -230,10 +255,14 @@ class SignetSSEClient(
                 "app:updated" -> ServerEvent.AppUpdated()
                 "key:created" -> ServerEvent.KeyCreated()
                 "key:unlocked" -> json.decodeFromString<ServerEvent.KeyUnlocked>(data)
+                "key:locked" -> json.decodeFromString<ServerEvent.KeyLocked>(data)
                 "key:deleted" -> json.decodeFromString<ServerEvent.KeyDeleted>(data)
                 "key:renamed" -> json.decodeFromString<ServerEvent.KeyRenamed>(data)
                 "key:updated" -> json.decodeFromString<ServerEvent.KeyUpdated>(data)
                 "admin:event" -> json.decodeFromString<ServerEvent.AdminEvent>(data)
+                "deadman:panic" -> json.decodeFromString<ServerEvent.DeadmanPanic>(data)
+                "deadman:reset" -> json.decodeFromString<ServerEvent.DeadmanReset>(data)
+                "deadman:updated" -> json.decodeFromString<ServerEvent.DeadmanUpdated>(data)
                 "ping" -> ServerEvent.Ping()
                 else -> ServerEvent.Unknown(type)
             }

@@ -14,14 +14,17 @@ import { RequestsPanel } from './components/requests/RequestsPanel.js';
 import { RequestDetailsModal } from './components/requests/RequestDetailsModal.js';
 import { KeysPanel } from './components/keys/KeysPanel.js';
 import { AppsPanel } from './components/apps/AppsPanel.js';
+import { ConnectAppModal } from './components/apps/ConnectAppModal.js';
 import { SettingsPanel } from './components/settings/SettingsPanel.js';
 import { HelpPanel } from './components/help/HelpPanel.js';
+import { LockScreen } from './components/shared/LockScreen.js';
 import { useRequests } from './hooks/useRequests.js';
 import { useKeys } from './hooks/useKeys.js';
 import { useApps } from './hooks/useApps.js';
 import { useDashboard } from './hooks/useDashboard.js';
 import { useRelays } from './hooks/useRelays.js';
 import { useHealth } from './hooks/useHealth.js';
+import { useDeadManSwitch } from './hooks/useDeadManSwitch.js';
 import './design-system.css';
 import './styles.css';
 
@@ -34,6 +37,7 @@ function AppContent() {
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermissionState>('default');
   const [detailsModalRequest, setDetailsModalRequest] = useState<DisplayRequest | null>(null);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [connectAppModalOpen, setConnectAppModalOpen] = useState(false);
   const [selectedKeyName, setSelectedKeyName] = useState<string | null>(null);
   const [showAutoApproved, setShowAutoApproved] = useState(true);
   const [appNames, setAppNames] = useState<Record<string, string>>({});
@@ -49,6 +53,7 @@ function AppContent() {
   const dashboard = useDashboard();
   const relays = useRelays();
   const health = useHealth();
+  const deadManSwitch = useDeadManSwitch();
 
   // Load connection info
   useEffect(() => {
@@ -156,6 +161,40 @@ function AppContent() {
     );
   }
 
+  // Handle recovery from inactivity lock
+  const handleRecover = async (keyName: string, passphrase: string, resumeApps: boolean): Promise<{ ok: boolean; error?: string }> => {
+    // Step 1: Unlock the key
+    const unlockSuccess = await keys.unlockKey(keyName, passphrase);
+    if (!unlockSuccess) {
+      return { ok: false, error: 'Invalid passphrase. Please try again.' };
+    }
+
+    // Step 2: Reset the dead man switch (clears panic state)
+    const resetResult = await deadManSwitch.reset(keyName, passphrase);
+    if (!resetResult.ok) {
+      return { ok: false, error: resetResult.error };
+    }
+
+    // Step 3: Resume all suspended apps if requested
+    if (resumeApps) {
+      const suspendedApps = apps.apps.filter(app => app.suspendedAt !== null);
+      await Promise.all(suspendedApps.map(app => apps.unsuspendApp(app.id)));
+    }
+
+    return { ok: true };
+  };
+
+  // Show lock screen when panic is triggered
+  if (deadManSwitch.status?.panicTriggeredAt != null) {
+    return (
+      <LockScreen
+        triggeredAt={deadManSwitch.status.panicTriggeredAt}
+        keys={keys.keys}
+        onRecover={handleRecover}
+      />
+    );
+  }
+
   // Render content based on active nav
   const renderContent = () => {
     switch (activeNav) {
@@ -169,6 +208,10 @@ function AppContent() {
             health={health.health}
             uiStatus={health.uiStatus}
             relayStatus={relays.relays}
+            deadManSwitchStatus={deadManSwitch.status}
+            deadManSwitchCountdown={deadManSwitch.countdown}
+            deadManSwitchUrgency={deadManSwitch.urgency}
+            keys={keys.keys}
             passwords={requests.passwords}
             appNames={appNames}
             showAutoApproved={showAutoApproved}
@@ -181,6 +224,7 @@ function AppContent() {
             onNavigateToKeys={() => setActiveNav('keys')}
             onNavigateToApps={() => setActiveNav('apps')}
             onToggleShowAutoApproved={() => setShowAutoApproved(prev => !prev)}
+            onLockNow={deadManSwitch.testPanic}
           />
         );
 
@@ -322,6 +366,7 @@ function AppContent() {
           <SettingsPanel
             notificationPermission={notificationPermission}
             onRequestNotificationPermission={requestNotificationPermission}
+            keys={keys.keys}
           />
         );
 
@@ -345,6 +390,7 @@ function AppContent() {
       unlockingKey={keys.unlocking}
       onLockKey={keys.lockKey}
       onUnlockKey={keys.unlockKey}
+      onConnectApp={() => setConnectAppModalOpen(true)}
     >
       {renderContent()}
 
@@ -359,6 +405,27 @@ function AppContent() {
       />
 
       <Toast />
+
+      {/* Connect App Modal */}
+      <ConnectAppModal
+        open={connectAppModalOpen}
+        keys={keys.keys}
+        onClose={() => setConnectAppModalOpen(false)}
+        onSuccess={(warning) => {
+          apps.refresh();
+          if (warning) {
+            showToast({
+              message: `App connected, but: ${warning}`,
+              type: 'warning',
+            });
+          } else {
+            showToast({
+              message: 'App connected successfully',
+              type: 'success',
+            });
+          }
+        }}
+      />
 
       {/* Command Palette */}
       <CommandPalette

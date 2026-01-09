@@ -1,6 +1,6 @@
 {
   "name": "signet-ui",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -19,6 +19,7 @@
     "debug": "^4.3.4",
     "express": "^4.19.2",
     "focus-trap-react": "^11.0.4",
+    "html5-qrcode": "^2.3.8",
     "http-proxy-middleware": "^3.0.5",
     "lucide-react": "^0.562.0",
     "nostr-tools": "^2.7.1",

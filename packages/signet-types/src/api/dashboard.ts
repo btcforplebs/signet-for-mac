@@ -39,6 +39,7 @@ export interface ActivityEntry {
 export type AdminEventType =
     | 'key_locked'
     | 'key_unlocked'
+    | 'app_connected'
     | 'app_suspended'
     | 'app_unsuspended'
     | 'daemon_started'

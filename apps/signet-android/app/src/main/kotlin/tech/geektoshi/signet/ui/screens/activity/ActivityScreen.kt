@@ -1,6 +1,8 @@
 package tech.geektoshi.signet.ui.screens.activity
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AdminPanelSettings
 import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.Pause
@@ -63,6 +66,7 @@ import tech.geektoshi.signet.ui.components.pressScale
 import tech.geektoshi.signet.ui.theme.BgSecondary
 import tech.geektoshi.signet.ui.theme.BgTertiary
 import tech.geektoshi.signet.ui.theme.Danger
+import tech.geektoshi.signet.ui.theme.Info
 import tech.geektoshi.signet.ui.theme.SignetPurple
 import tech.geektoshi.signet.ui.theme.TextMuted
 import tech.geektoshi.signet.ui.theme.TextPrimary
@@ -193,8 +197,8 @@ fun ActivityScreen() {
         if (daemonUrl.isNotEmpty()) {
             if (!isRefreshing) isLoading = true
             error = null
+            val client = SignetApiClient(daemonUrl)
             try {
-                val client = SignetApiClient(daemonUrl)
                 when (selectedFilter) {
                     "admin" -> {
                         // Fetch admin activity only
@@ -224,10 +228,10 @@ fun ActivityScreen() {
                         mixedActivity = emptyList()
                     }
                 }
-                client.close()
             } catch (e: Exception) {
                 error = e.message ?: "Failed to connect"
             } finally {
+                client.close()
                 isLoading = false
                 isRefreshing = false
             }
@@ -261,7 +265,9 @@ fun ActivityScreen() {
 
         // Filter chips
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             filters.forEach { filter ->
@@ -539,12 +545,12 @@ private fun AdminActivityCard(activity: AdminActivityEntry) {
                     imageVector = getAdminEventIcon(activity.eventType),
                     contentDescription = null,
                     modifier = Modifier.size(14.dp),
-                    tint = SignetPurple
+                    tint = Info
                 )
                 Text(
                     text = getAdminEventLabel(activity.eventType),
                     style = MaterialTheme.typography.bodySmall,
-                    color = SignetPurple
+                    color = Info
                 )
             }
 
@@ -569,6 +575,7 @@ private fun getAdminEventIcon(eventType: String): ImageVector {
     return when (eventType) {
         "key_locked" -> Icons.Outlined.Lock
         "key_unlocked" -> Icons.Outlined.LockOpen
+        "app_connected" -> Icons.Outlined.Link
         "app_suspended" -> Icons.Outlined.Pause
         "app_unsuspended" -> Icons.Outlined.PlayArrow
         "daemon_started" -> Icons.Outlined.Power
@@ -583,6 +590,7 @@ private fun getAdminEventLabel(eventType: String): String {
     return when (eventType) {
         "key_locked" -> "Key locked"
         "key_unlocked" -> "Key unlocked"
+        "app_connected" -> "App connected"
         "app_suspended" -> "App suspended"
         "app_unsuspended" -> "App resumed"
         "daemon_started" -> "Daemon started"
