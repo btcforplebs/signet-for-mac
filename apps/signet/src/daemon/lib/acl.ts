@@ -1,6 +1,7 @@
 import type { Event } from 'nostr-tools/pure';
 import prisma from '../../db.js';
 import { ACL_CACHE_TTL_MS, ACL_CACHE_MAX_SIZE } from '../constants.js';
+import { TTLCache } from './ttl-cache.js';
 
 export type RpcMethod =
     | 'connect'
@@ -12,8 +13,8 @@ export type RpcMethod =
     | 'ping';
 
 /**
- * Simple LRU-like cache for ACL decisions with TTL.
- * Reduces database load for repeated requests from the same app.
+ * Cache entry for ACL decisions.
+ * Uses TTLCache for automatic TTL expiration and periodic cleanup.
  */
 interface CacheEntry {
     keyUser: {
@@ -24,7 +25,6 @@ interface CacheEntry {
         trustLevel: string | null;
     };
     hasExplicitDeny: boolean;
-    timestamp: number;
 }
 
 /**
@@ -43,7 +43,14 @@ function isCurrentlySuspended(suspendedAt: Date | null, suspendUntil: Date | nul
     return suspendUntil.getTime() > Date.now();
 }
 
-const aclCache = new Map<string, CacheEntry>();
+/**
+ * ACL cache using TTLCache for automatic expiration and periodic cleanup.
+ * This prevents memory leaks from expired entries that are never accessed.
+ */
+const aclCache = new TTLCache<CacheEntry>('acl-cache', {
+    ttlMs: ACL_CACHE_TTL_MS,
+    maxSize: ACL_CACHE_MAX_SIZE,
+});
 
 function getCacheKey(keyName: string, remotePubkey: string): string {
     return `${keyName}:${remotePubkey}`;
@@ -51,33 +58,14 @@ function getCacheKey(keyName: string, remotePubkey: string): string {
 
 function getCachedEntry(keyName: string, remotePubkey: string): CacheEntry | null {
     const key = getCacheKey(keyName, remotePubkey);
-    const entry = aclCache.get(key);
-
-    if (!entry) {
-        return null;
-    }
-
-    // Check TTL
-    if (Date.now() - entry.timestamp > ACL_CACHE_TTL_MS) {
-        aclCache.delete(key);
-        return null;
-    }
-
-    return entry;
+    // TTLCache.get() automatically returns undefined for expired entries
+    return aclCache.get(key) ?? null;
 }
 
-function setCachedEntry(keyName: string, remotePubkey: string, entry: Omit<CacheEntry, 'timestamp'>): void {
+function setCachedEntry(keyName: string, remotePubkey: string, entry: CacheEntry): void {
     const key = getCacheKey(keyName, remotePubkey);
-
-    // Simple size limit - remove oldest entries when full
-    if (aclCache.size >= ACL_CACHE_MAX_SIZE) {
-        const firstKey = aclCache.keys().next().value;
-        if (firstKey) {
-            aclCache.delete(firstKey);
-        }
-    }
-
-    aclCache.set(key, { ...entry, timestamp: Date.now() });
+    // TTLCache handles TTL and max size automatically
+    aclCache.set(key, entry);
 }
 
 /**
@@ -93,11 +81,8 @@ export function invalidateAclCache(keyName: string, remotePubkey: string): void 
  * Call this when revoking all apps for a key.
  */
 export function invalidateAclCacheForKey(keyName: string): void {
-    for (const key of aclCache.keys()) {
-        if (key.startsWith(`${keyName}:`)) {
-            aclCache.delete(key);
-        }
-    }
+    const prefix = `${keyName}:`;
+    aclCache.deleteMatching((key) => key.startsWith(prefix));
 }
 
 /**

@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.6.2]
+
+### Fixed
+- **Daemon: Memory leak in AdminCommandService reconnection timers**
+  - Reconnection `setTimeout` calls were not tracked or cleared during refresh/shutdown
+  - Closures in timers held references to relay URLs, filters, and generation counters
+  - Added `reconnectTimers` Set to track pending timers, cleared on `closeAllWebsockets()`
+  - Added exponential backoff with max 10 retries per relay
+  - Retry counts reset on successful connection
+
+- **Daemon: Memory leak in AdminCommandService publishEvent**
+  - WebSockets created for publishing confirmation DMs were not cleaned up after `Promise.any()` resolved
+  - Orphaned sockets and their timeouts accumulated when publishing to multiple relays
+  - Added try/finally cleanup that closes all WebSockets and clears timeouts after publish completes
+
+- **Daemon: Memory leak in ACL cache**
+  - Manual Map-based cache only cleaned expired entries on access
+  - Entries that were never re-accessed persisted until max size forced eviction
+  - Migrated to `TTLCache` with automatic background cleanup every 60 seconds
+  - Provides proper LRU eviction and stats via `getAllCacheStats()`
+
+---
+
 ## [1.6.1]
 
 ### Fixed
