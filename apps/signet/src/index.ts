@@ -6,6 +6,7 @@ import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { addKey } from './commands/add.js';
 import { runStart } from './commands/start.js';
+import { resetApp } from './commands/reset.js';
 
 const defaultConfigPath = join(homedir(), '.signet-config', 'signet.json');
 
@@ -75,6 +76,30 @@ async function main() {
                     configPath: argv.config as string,
                     keyNames: argv.key ? (argv.key as string[]) : undefined,
                     verbose: Boolean(argv.verbose),
+                });
+            }
+        )
+        .command(
+            'reset',
+            'Factory reset (deletes all keys and data)',
+            (command) =>
+                command
+                    .option('force', {
+                        alias: 'f',
+                        type: 'boolean',
+                        default: false,
+                        describe: 'Force reset without confirmation',
+                    })
+                    .option('all', {
+                        type: 'boolean',
+                        default: false,
+                        describe: 'Also delete the config directory if empty',
+                    }),
+            async (argv) => {
+                await resetApp({
+                    configPath: argv.config as string,
+                    force: argv.force as boolean,
+                    all: argv.all as boolean,
                 });
             }
         )

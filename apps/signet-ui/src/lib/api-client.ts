@@ -103,10 +103,18 @@ const buildApiBases = (): string[] => {
   if (typeof window !== 'undefined') {
     try {
       const current = new URL(window.location.href);
+
+      // Prioritize the current origin (e.g. http://localhost:4174) 
+      // This is crucial when running behind the UI proxy which forwards to the daemon
+      add(current.origin);
+
       const protocol = current.protocol || 'http:';
       const hostname = current.hostname || 'localhost';
       const defaultHost = `${protocol}//${hostname}`;
 
+      // Add Daemon port (3001) and legacy port (3000)
+      add(`${defaultHost}:3001`);
+      add(`${protocol}//127.0.0.1:3001`);
       add(`${defaultHost}:3000`);
       add(defaultHost);
 
@@ -617,4 +625,30 @@ export async function getRelayTrustScores(relays: string[]): Promise<{
   scores: Record<string, number | null>;
 }> {
   return apiPost('/relays/trust-scores', { relays });
+}
+
+/**
+ * Get remote access status.
+ */
+export async function getRemoteAccessStatus(): Promise<{
+  enabled: boolean;
+  tailscaleIp: string | null;
+  localIp: string | null;
+  baseUrl: string;
+  allowedOrigins: string[];
+}> {
+  return apiGet('/system/remote-access');
+}
+
+/**
+ * Toggle remote access.
+ */
+export async function setRemoteAccess(enabled: boolean): Promise<{
+  enabled: boolean;
+  tailscaleIp: string | null;
+  localIp: string | null;
+  baseUrl: string;
+  allowedOrigins: string[];
+}> {
+  return apiPost('/system/remote-access', { enabled });
 }

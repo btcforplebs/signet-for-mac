@@ -67,6 +67,7 @@ function groupEntriesByDate(entries: MixedEntry[]): Map<DateGroup, MixedEntry[]>
 
 const FILTER_TABS: Array<{ id: RequestFilter; label: string }> = [
   { id: 'all', label: 'All' },
+  { id: 'pending', label: 'Pending' },
   { id: 'approved', label: 'Approved' },
   { id: 'denied', label: 'Denied' },
   { id: 'expired', label: 'Expired' },

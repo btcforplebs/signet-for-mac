@@ -219,11 +219,10 @@ export function Sidebar({
                         onClick={() => onKeySelect?.(key.name)}
                       >
                         <span
-                          className={`${styles.keyStatus} ${
-                            key.status === 'online' ? styles.keyStatusOnline :
-                            key.status === 'locked' ? styles.keyStatusLocked :
-                            styles.keyStatusOffline
-                          }`}
+                          className={`${styles.keyStatus} ${key.status === 'online' ? styles.keyStatusOnline :
+                              key.status === 'locked' ? styles.keyStatusLocked :
+                                styles.keyStatusOffline
+                            }`}
                           aria-label={`Key is ${key.status}`}
                         />
                         <span className={styles.keyName}>{key.name}</span>
@@ -320,9 +319,8 @@ export function Sidebar({
                     <li key={relay.url}>
                       <div className={styles.relayItem}>
                         <span
-                          className={`${styles.keyStatus} ${
-                            relay.connected ? styles.keyStatusOnline : styles.keyStatusOffline
-                          }`}
+                          className={`${styles.keyStatus} ${relay.connected ? styles.keyStatusOnline : styles.keyStatusOffline
+                            }`}
                           aria-label={relay.connected ? 'Connected' : 'Disconnected'}
                         />
                         <span className={styles.relayUrl} title={relay.url}>
@@ -359,24 +357,26 @@ export function Sidebar({
         {/* Inactivity Lock */}
         <DeadManSwitchCard keys={keys.map(k => ({ name: k.name, status: k.status, isEncrypted: k.isEncrypted }))} />
 
-        <button
-          type="button"
-          className={`${styles.navItem} ${activeNav === 'help' ? styles.navItemActive : ''}`}
-          onClick={() => onNavChange('help')}
-          aria-current={activeNav === 'help' ? 'page' : undefined}
-        >
-          <span className={styles.navIcon}><HelpCircle size={18} /></span>
-          <span className={styles.navLabel}>Help</span>
-        </button>
-        <button
-          type="button"
-          className={`${styles.navItem} ${activeNav === 'settings' ? styles.navItemActive : ''}`}
-          onClick={() => onNavChange('settings')}
-          aria-current={activeNav === 'settings' ? 'page' : undefined}
-        >
-          <span className={styles.navIcon}><Settings size={18} /></span>
-          <span className={styles.navLabel}>Settings</span>
-        </button>
+        <div className={styles.bottomNav}>
+          <button
+            type="button"
+            className={`${styles.navItem} ${activeNav === 'help' ? styles.navItemActive : ''}`}
+            onClick={() => onNavChange('help')}
+            aria-current={activeNav === 'help' ? 'page' : undefined}
+          >
+            <span className={styles.navIcon}><HelpCircle size={18} /></span>
+            <span className={styles.navLabel}>Help</span>
+          </button>
+          <button
+            type="button"
+            className={`${styles.navItem} ${activeNav === 'settings' ? styles.navItemActive : ''}`}
+            onClick={() => onNavChange('settings')}
+            aria-current={activeNav === 'settings' ? 'page' : undefined}
+          >
+            <span className={styles.navIcon}><Settings size={18} /></span>
+            <span className={styles.navLabel}>Settings</span>
+          </button>
+        </div>
       </div>
 
       {/* Unlock Key Modal */}

@@ -10,3 +10,4 @@ export { AdminCommandService } from './admin-command-service.js';
 export { NostrconnectService, initNostrconnectService, getNostrconnectService, type NostrconnectServiceConfig } from './nostrconnect-service.js';
 export { DeadManSwitchService, getDeadManSwitchService, setDeadManSwitchService, initDeadManSwitchService, type DeadManSwitchServiceConfig } from './dead-man-switch-service.js';
 export { TrustScoreService } from './trust-score-service.js';
+export { SystemService, initSystemService, getSystemService, type RemoteAccessStatus } from './system-service.js';

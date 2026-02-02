@@ -3,8 +3,8 @@
  */
 
 // Request expiry and polling
-export const REQUEST_EXPIRY_MS = 60_000; // 60 seconds
-export const POLL_TIMEOUT_MS = 65_000; // 65 seconds (slightly longer than expiry)
+export const REQUEST_EXPIRY_MS = 600_000; // 10 minutes
+export const POLL_TIMEOUT_MS = 605_000; // 605 seconds (slightly longer than expiry)
 export const POLL_INITIAL_INTERVAL_MS = 100;
 export const POLL_MAX_INTERVAL_MS = 2_000;
 export const POLL_MULTIPLIER = 1.5;

@@ -1,6 +1,6 @@
 {
   "name": "signet",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Signet - Modern NIP-46 remote signer",
   "main": "dist/index.js",
   "bin": {

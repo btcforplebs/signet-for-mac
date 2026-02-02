@@ -32,6 +32,7 @@ import {
     initDeadManSwitchService,
     type DeadManSwitchService,
     TrustScoreService,
+    initSystemService,
 } from './services/index.js';
 import { requestRepository, logRepository } from './repositories/index.js';
 import { adminLogRepository } from './repositories/admin-log-repository.js';
@@ -216,6 +217,22 @@ async function logAutoApproval(
 export async function runDaemon(config: DaemonBootstrapConfig): Promise<void> {
     const daemon = new Daemon(config);
     await daemon.start();
+
+    // Register signal handlers for graceful shutdown
+    const shutdown = async (signal: string) => {
+        logger.info(`Received ${signal}, initiating graceful shutdown...`);
+        try {
+            await daemon.stop();
+            logger.info('Graceful shutdown complete. Exiting.');
+            process.exit(0);
+        } catch (err) {
+            logger.error('Error during graceful shutdown', { error: toErrorMessage(err) });
+            process.exit(1);
+        }
+    };
+
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
 class Daemon {
@@ -319,6 +336,9 @@ class Daemon {
             keyService: this.keyService,
         });
 
+        // Initialize system service for local/remote configuration
+        initSystemService(config, config.configFile);
+
         // Wire up per-app subscription callbacks
         nostrconnectService.setOnAppConnected((keyName, appId, relays) => {
             const backend = this.backends.get(keyName);
@@ -407,6 +427,46 @@ class Daemon {
         this.eventService.emitAdminEvent(adminLogRepository.toActivityEntry(adminLog));
 
         logger.info('Signet ready to serve requests');
+    }
+
+    public async stop(): Promise<void> {
+        logger.info('Stopping daemon services...');
+
+        // Stop HTTP server
+        if (this.httpServer) {
+            await this.httpServer.stop();
+        }
+
+        // Stop relay pool and monitoring
+        this.pool.stopMonitoring();
+        this.pool.close();
+
+        // Stop services
+        this.relayService.stop();
+        this.publishLogger.stop();
+        if (this.adminCommandService) {
+            this.adminCommandService.stop();
+        }
+        await this.deadManSwitchService.stop();
+        await this.trustScoreService.stop();
+
+        // Disconnect Prisma
+        await prisma.$disconnect();
+
+        // Log daemon_stopped event
+        try {
+            const adminLog = await adminLogRepository.create({
+                eventType: 'daemon_stopped',
+                clientName: 'signet-daemon',
+                clientVersion: daemonVersion,
+            });
+            this.eventService.emitAdminEvent(adminLogRepository.toActivityEntry(adminLog));
+        } catch (err) {
+            // Might fail if DB is already closed or failing
+            logger.warn('Failed to log daemon_stopped event', { error: toErrorMessage(err) });
+        }
+
+        logger.info('Daemon stopped.');
     }
 
     private startCleanupTasks(): void {
@@ -611,7 +671,8 @@ class Daemon {
     private async startWebAuth(): Promise<void> {
         // Support both new (SIGNET_*) and legacy (AUTH_*) env var names
         const portEnv = process.env.SIGNET_PORT ?? process.env.AUTH_PORT;
-        const authPort = this.config.authPort ?? (portEnv ? parseInt(portEnv, 10) : undefined);
+        // Prioritize env var (from Electron) over config file
+        const authPort = (portEnv ? parseInt(portEnv, 10) : undefined) ?? this.config.authPort;
         if (!authPort) {
             logger.info('No authPort configured, HTTP server disabled');
             return;

@@ -1,6 +1,7 @@
 packages:
   - apps/signet
   - apps/signet-ui
+  - apps/desktop
   - packages/*
 
 onlyBuiltDependencies:

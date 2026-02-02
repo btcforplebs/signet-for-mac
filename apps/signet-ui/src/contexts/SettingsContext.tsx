@@ -11,14 +11,14 @@ export interface UserSettings {
   biometricType?: string;
 }
 
-const isCapacitor = typeof window !== 'undefined' &&
+export const isCapacitor = typeof window !== 'undefined' &&
   ((window as any).Capacitor?.isNative ||
     navigator.userAgent.includes('Capacitor') ||
     window.location.protocol === 'capacitor:' ||
     (window.location.hostname === 'localhost' && window.location.port === ''));
 
 const DEFAULT_SETTINGS: UserSettings = {
-  notificationsEnabled: false,
+  notificationsEnabled: true,
   defaultTrustLevel: 'reasonable',
   isStandalone: isCapacitor,
   daemonUrl: '',

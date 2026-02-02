@@ -1,9 +1,10 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import type { TrustLevel, KeyInfo } from '@signet/types';
-import { Loader2 } from 'lucide-react';
-import { useSettings } from '../../contexts/SettingsContext.js';
+import { Loader2, Globe } from 'lucide-react';
+import { useSettings, isCapacitor } from '../../contexts/SettingsContext.js';
 import { getTrustLevelInfo } from '../../lib/event-labels.js';
 import { useDeadManSwitch } from '../../hooks/useDeadManSwitch.js';
+import { getRemoteAccessStatus, setRemoteAccess } from '../../lib/api-client.js';
 import styles from './SettingsPanel.module.css';
 
 const TRUST_LEVELS: TrustLevel[] = ['paranoid', 'reasonable', 'full'];
@@ -56,6 +57,29 @@ export function SettingsPanel({
 }: SettingsPanelProps) {
   const { settings, updateSettings } = useSettings();
   const deadman = useDeadManSwitch();
+
+  const [remoteStatus, setRemoteStatus] = useState<{
+    enabled: boolean;
+    tailscaleIp: string | null;
+    localIp: string | null;
+    baseUrl: string;
+  } | null>(null);
+
+  // Fetch remote access status
+  useEffect(() => {
+    if (!settings.isStandalone && !isCapacitor) {
+      getRemoteAccessStatus().then(setRemoteStatus).catch(() => { });
+    }
+  }, [settings.isStandalone]);
+
+  const handleToggleRemoteAccess = async (enable: boolean) => {
+    try {
+      const status = await setRemoteAccess(enable);
+      setRemoteStatus(status);
+    } catch (error) {
+      console.error('Failed to toggle remote access:', error);
+    }
+  };
 
   // DMS state
   const [dmsLoading, setDmsLoading] = useState(false);
@@ -184,7 +208,7 @@ export function SettingsPanel({
           <div className={styles.settingInfo}>
             <span className={styles.settingLabel}>Standalone Mode</span>
             <span className={styles.settingDescription}>
-              Run NIP-46 logic directly in-app (Recommended for iOS)
+              Run NIP-46 logic directly in-app. Uses separate LocalStorage (Recommended for iOS/Mobile).
             </span>
           </div>
           <label className={styles.toggle}>
@@ -215,6 +239,36 @@ export function SettingsPanel({
               style={{ paddingRight: 'var(--space-3)', backgroundImage: 'none', width: '200px' }}
             />
           </div>
+        )}
+
+        {!settings.isStandalone && !isCapacitor && remoteStatus && (
+          <>
+            <div className={styles.setting}>
+              <div className={styles.settingInfo}>
+                <span className={styles.settingLabel}>Remote Mobile Access</span>
+                <span className={styles.settingDescription}>
+                  Allow Signet mobile app to connect to this daemon {remoteStatus.tailscaleIp ? '(Tailscale detected)' : ''}
+                </span>
+              </div>
+              <label className={styles.toggle}>
+                <input
+                  type="checkbox"
+                  checked={remoteStatus.enabled}
+                  onChange={(e) => handleToggleRemoteAccess(e.target.checked)}
+                  aria-label="Enable remote mobile access"
+                />
+                <span className={styles.toggleSlider} />
+              </label>
+            </div>
+            {remoteStatus.enabled && (
+              <div className={styles.connectionNote}>
+                <Globe size={14} />
+                <span>
+                  Connect from mobile using: <strong>{remoteStatus.baseUrl.replace(/:4174$/, ':3000')}</strong>
+                </span>
+              </div>
+            )}
+          </>
         )}
       </div>
 

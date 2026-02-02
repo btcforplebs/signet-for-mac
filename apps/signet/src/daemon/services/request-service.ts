@@ -1,5 +1,6 @@
-import type { PendingRequest } from '@signet/types';
+import type { PendingRequest, ApprovalType } from '@signet/types';
 import type { StoredKey } from '../../config/types.js';
+import { REQUEST_EXPIRY_MS } from '../constants.js';
 import {
     requestRepository,
     type RequestStatus,
@@ -19,7 +20,7 @@ export interface RequestQueryParams {
 
 export class RequestService {
     private readonly config: RequestServiceConfig;
-    private readonly REQUEST_TTL_MS = 60_000;
+    private readonly REQUEST_TTL_MS = REQUEST_EXPIRY_MS;
 
     constructor(config: RequestServiceConfig) {
         this.config = config;
@@ -74,7 +75,7 @@ export class RequestService {
             requiresPassword,
             processedAt: record.processedAt?.toISOString() ?? null,
             autoApproved: record.autoApproved,
-            approvalType: record.approvalType ?? undefined,
+            approvalType: (record.approvalType as ApprovalType) ?? undefined,
             appName: record.KeyUser?.description ?? null,
             allowed: record.allowed,
         };

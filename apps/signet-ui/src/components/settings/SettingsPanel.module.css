@@ -114,11 +114,11 @@
   transition: var(--transition-fast);
 }
 
-.toggle input:checked + .toggleSlider {
+.toggle input:checked+.toggleSlider {
   background-color: var(--accent);
 }
 
-.toggle input:checked + .toggleSlider::before {
+.toggle input:checked+.toggleSlider::before {
   background-color: white;
   transform: translateX(20px);
 }
@@ -308,7 +308,7 @@
     width: 22px;
   }
 
-  .toggle input:checked + .toggleSlider::before {
+  .toggle input:checked+.toggleSlider::before {
     transform: translateX(24px);
   }
 
@@ -481,13 +481,28 @@
   from {
     transform: rotate(0deg);
   }
+
   to {
     transform: rotate(360deg);
   }
 }
 
+.connectionNote {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-2);
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  border-left: 3px solid var(--accent);
+}
+
 /* Touch target sizing for modals */
 @media (pointer: coarse) {
+
   .formGroup select,
   .formGroup input {
     min-height: 44px;
@@ -499,4 +514,3 @@
     min-height: 44px;
   }
 }
-

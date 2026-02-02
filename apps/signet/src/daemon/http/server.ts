@@ -23,6 +23,7 @@ import { registerEventsRoutes } from './routes/events.js';
 import { registerNostrconnectRoutes } from './routes/nostrconnect.js';
 import { registerDeadManSwitchRoutes } from './routes/dead-man-switch.js';
 import { registerLogsRoutes } from './routes/logs.js';
+import { registerSystemRoutes } from './routes/system.js';
 import type { KeyService, RequestService, AppService, DashboardService, EventService, RelayService } from '../services/index.js';
 import type { ConnectionManager } from '../connection-manager.js';
 import type { NostrConfig } from '../../config/types.js';
@@ -219,16 +220,24 @@ export class HttpServer {
         }, {
             auth: [authMiddleware],
             csrf: [csrfMiddleware],
+            rateLimit: [], // Not currently rate-limited
         });
 
         // Dead man's switch routes (state-changing, needs CSRF)
         registerDeadManSwitchRoutes(this.fastify, {
             auth: [authMiddleware],
             csrf: [csrfMiddleware],
+            rateLimit: [], // Not currently rate-limited
         });
 
         // Logs routes (GET only, no CSRF needed)
         registerLogsRoutes(this.fastify, [authMiddleware]);
+
+        // System routes
+        registerSystemRoutes(this.fastify, {
+            auth: [authMiddleware],
+            csrf: [csrfMiddleware],
+        });
     }
 
     private async listen(): Promise<void> {
@@ -236,5 +245,11 @@ export class HttpServer {
             port: this.config.port,
             host: this.config.host,
         });
+    }
+
+    async stop(): Promise<void> {
+        logger.info('Shutting down HTTP server...');
+        await this.fastify.close();
+        logger.info('HTTP server shut down.');
     }
 }

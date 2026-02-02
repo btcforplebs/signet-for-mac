@@ -2,6 +2,7 @@ import type { DashboardStats, ActivityEntry } from '@signet/types';
 import type { StoredKey } from '../../config/types.js';
 import { appRepository, logRepository, requestRepository } from '../repositories/index.js';
 import { adminLogRepository, type AdminActivityEntry } from '../repositories/admin-log-repository.js';
+import { extractEventKind } from '../lib/parse.js';
 
 export interface DashboardServiceConfig {
     allKeys: Record<string, StoredKey>;
@@ -57,14 +58,15 @@ export class DashboardService {
         const yesterday = new Date();
         yesterday.setDate(yesterday.getDate() - 1);
 
-        // Run all independent queries in parallel (6 queries -> 1 round trip)
+        // Run all independent queries in parallel (7 queries -> 1 round trip)
         const [
             connectedApps,
-            pendingRequests,
+            pendingCount,
             recentActivity24h,
             hourlyActivity,
             recentLogs,
             recentAdminLogs,
+            recentPendingRequests,
         ] = await Promise.all([
             appRepository.countActive(),
             requestRepository.countPending(),
@@ -72,14 +74,28 @@ export class DashboardService {
             logRepository.getHourlyActivityRaw(),
             logRepository.findRecent(5),
             adminLogRepository.findRecent(5),
+            requestRepository.findMany({ status: 'pending', limit: 5, offset: 0 }),
         ]);
 
         // Convert to activity entries
         const nip46Activity = recentLogs.map(log => logRepository.toActivityEntry(log));
         const adminActivity = recentAdminLogs.map(log => adminLogRepository.toActivityEntry(log));
 
+        // Convert pending requests to activity entries
+        const pendingActivity = recentPendingRequests.map(req => ({
+            id: req.id,
+            timestamp: req.createdAt.toISOString(),
+            type: 'pending',
+            method: req.method,
+            eventKind: req.method === 'sign_event' ? extractEventKind(req.params) : undefined,
+            keyName: req.keyName ?? undefined,
+            userPubkey: req.remotePubkey,
+            appName: req.KeyUser?.description ?? undefined,
+            autoApproved: false,
+        } as unknown as ActivityEntry));
+
         // Merge and sort by timestamp (newest first), take top 5
-        const activity: MixedActivityEntry[] = [...nip46Activity, ...adminActivity]
+        const activity: MixedActivityEntry[] = [...nip46Activity, ...adminActivity, ...pendingActivity]
             .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
             .slice(0, 5);
 
@@ -88,7 +104,7 @@ export class DashboardService {
                 totalKeys,
                 activeKeys,
                 connectedApps,
-                pendingRequests,
+                pendingRequests: pendingCount,
                 recentActivity24h,
             },
             activity,

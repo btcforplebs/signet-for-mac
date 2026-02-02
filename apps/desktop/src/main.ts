@@ -98,8 +98,9 @@ function killProcessOnPort(port: number) {
 }
 
 async function ensurePortsFree() {
-    log.info('Ensuring ports 3001 and 4174 are free...');
-    killProcessOnPort(3001); // Daemon
+    log.info('Ensuring ports 3000, 3001, and 4174 are free...');
+    killProcessOnPort(3000); // Daemon auth server
+    killProcessOnPort(3001); // Daemon API
     killProcessOnPort(4174); // UI
 }
 
@@ -265,7 +266,7 @@ async function startUi() {
         env: {
             ...process.env,
             PORT: '4174',
-            DAEMON_URL: 'http://localhost:3001',
+            DAEMON_URL: 'http://127.0.0.1:3001',
             ELECTRON_RUN_AS_NODE: '1',
             NODE_PATH: nodePath
         },
@@ -397,8 +398,56 @@ app.on('window-all-closed', () => {
     // Do not quit when windows are closed
 });
 
-app.on('before-quit', () => {
+/**
+ * Gracefully kill a child process with a timeout.
+ * Attempts SIGTERM first, then SIGKILL if it doesn't exit.
+ */
+async function killWithGrace(proc: ChildProcess | null, name: string, timeoutMs = 5000): Promise<void> {
+    if (!proc || proc.exitCode !== null) return;
+
+    log.info(`Sending SIGTERM to ${name} (PID: ${proc.pid})...`);
+    proc.kill('SIGTERM');
+
+    const exited = await Promise.race([
+        new Promise<boolean>(resolve => {
+            proc.on('exit', () => resolve(true));
+        }),
+        new Promise<boolean>(resolve => {
+            setTimeout(() => resolve(false), timeoutMs);
+        })
+    ]);
+
+    if (!exited) {
+        log.warn(`${name} (PID: ${proc.pid}) did not exit gracefully in ${timeoutMs}ms. Sending SIGKILL.`);
+        proc.kill('SIGKILL');
+    } else {
+        log.info(`${name} exited gracefully.`);
+    }
+}
+
+app.on('before-quit', async (event) => {
+    if (isQuitting) return;
+
+    log.info('Application quitting, initiating graceful shutdown of background processes...');
+    event.preventDefault(); // Prevent immediate quit
     isQuitting = true;
-    if (daemonProcess) daemonProcess.kill();
-    if (uiProcess) uiProcess.kill();
+
+    try {
+        // Shutdown tracked processes in parallel
+        await Promise.all([
+            killWithGrace(daemonProcess, 'Daemon'),
+            killWithGrace(uiProcess, 'UI Server')
+        ]);
+
+        // Force kill any zombie processes on our ports (failsafe)
+        log.info('Cleaning up any zombie processes on ports...');
+        killProcessOnPort(3000);
+        killProcessOnPort(3001);
+        killProcessOnPort(4174);
+    } catch (err) {
+        log.error('Error during shutdown sequence:', err);
+    } finally {
+        log.info('Background processes terminated. Exiting Electron.');
+        app.quit();
+    }
 });

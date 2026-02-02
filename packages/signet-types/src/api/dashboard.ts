@@ -21,7 +21,7 @@ export type ApprovalType = 'manual' | 'auto_trust' | 'auto_permission';
  * A single activity entry for the dashboard timeline (NIP-46 requests)
  */
 export interface ActivityEntry {
-    id: number;
+    id: string | number;
     timestamp: string;
     type: string;
     method?: string;
@@ -56,7 +56,7 @@ export type AdminEventType =
  * An admin activity entry (key lock/unlock, app suspend/unsuspend, daemon start, status check, command executed)
  */
 export interface AdminActivityEntry {
-    id: number;
+    id: string | number;
     timestamp: string;
     category: 'admin';
     eventType: AdminEventType;

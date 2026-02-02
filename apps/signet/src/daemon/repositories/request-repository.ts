@@ -1,6 +1,7 @@
 import prisma from '../../db.js';
 import type { Prisma } from '@prisma/client';
-import type { ApprovalType } from '../lib/acl.js';
+import type { ApprovalType } from '@signet/types';
+import { REQUEST_EXPIRY_MS } from '../constants.js';
 
 export type RequestStatus = 'all' | 'pending' | 'approved' | 'denied' | 'expired';
 
@@ -30,7 +31,7 @@ export interface RequestRecord {
 }
 
 export class RequestRepository {
-    private readonly REQUEST_TTL_MS = 60_000;
+    private readonly REQUEST_TTL_MS = REQUEST_EXPIRY_MS;
 
     async findById(id: string): Promise<RequestRecord | null> {
         return prisma.request.findUnique({
@@ -81,7 +82,7 @@ export class RequestRepository {
                     OR: [
                         { allowed: true },
                         { allowed: false },
-                        { allowed: null, createdAt: { lt: expiryThreshold } },
+                        { allowed: null },
                     ],
                 };
                 break;

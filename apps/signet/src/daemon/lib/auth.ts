@@ -144,7 +144,7 @@ export function setCsrfCookie(
         path: '/',
         httpOnly: false, // Must be readable by JavaScript
         secure,
-        sameSite: 'strict',
+        sameSite: 'lax',
         maxAge: 7 * 24 * 60 * 60, // 7 days in seconds
     });
 }

@@ -11,6 +11,7 @@ export type AdminEventType =
     | 'app_suspended'
     | 'app_unsuspended'
     | 'daemon_started'
+    | 'daemon_stopped'
     | 'status_checked'
     | 'command_executed'
     | 'panic_triggered'
